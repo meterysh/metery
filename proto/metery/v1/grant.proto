@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+// Grants add credits to a metered entitlement. Boolean features cannot
+// receive grants — those are validated at service boundary.
+package metery.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "metery/v1/common.proto";
+
+option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
+
+message Grant {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  string entitlement_id = 2 [(buf.validate.field).string.uuid = true];
+  int64 amount = 3 [(buf.validate.field).int64.gt = 0];
+  int32 priority = 4; // lower number burns first
+  google.protobuf.Timestamp effective_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+  Recurrence recurrence = 7; // optional
+  Rollover rollover = 8; // optional
+  string parent_grant_id = 9; // set on children of a recurring grant
+  google.protobuf.Struct metadata = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp voided_at = 12;
+}
+
+service GrantService {
+  rpc CreateGrant(CreateGrantRequest) returns (CreateGrantResponse) {
+    option (google.api.http) = {
+      post: "/v1/customers/{customer_id}/entitlements/{feature_id}/grants"
+      body: "*"
+      response_body: "grant"
+    };
+  }
+  rpc ListGrants(ListGrantsRequest) returns (ListGrantsResponse) {
+    option (google.api.http) = {get: "/v1/customers/{customer_id}/entitlements/{feature_id}/grants"};
+  }
+  rpc VoidGrant(VoidGrantRequest) returns (VoidGrantResponse) {
+    option (google.api.http) = {delete: "/v1/grants/{id}"};
+  }
+}
+
+message CreateGrantRequest {
+  string customer_id = 1 [(buf.validate.field).required = true];
+  string feature_id = 2 [(buf.validate.field).required = true];
+  int64 amount = 3 [(buf.validate.field).int64.gt = 0];
+  // Default 100 if absent. 0 is valid (highest priority).
+  optional int32 priority = 4;
+  google.protobuf.Timestamp effective_at = 5; // default now
+  Expiration expiration = 6; // optional
+  Recurrence recurrence = 7; // optional
+  Rollover rollover = 8; // optional
+  google.protobuf.Struct metadata = 9;
+}
+message CreateGrantResponse {
+  Grant grant = 1;
+}
+
+message ListGrantsRequest {
+  string customer_id = 1 [(buf.validate.field).required = true];
+  string feature_id = 2 [(buf.validate.field).required = true];
+  bool include_voided = 3;
+  int32 limit = 4 [(buf.validate.field).int32 = {gte: 0, lte: 1000}];
+  string cursor = 5;
+}
+message ListGrantsResponse {
+  repeated Grant grants = 1;
+  string next_cursor = 2;
+}
+
+message VoidGrantRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+message VoidGrantResponse {}

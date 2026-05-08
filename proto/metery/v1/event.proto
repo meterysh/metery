@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+// Usage events: append-only consumption records against metered features.
+package metery.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
+
+message UsageEvent {
+  // Caller-assigned event identifier. Doubles as the idempotency key —
+  // a unique-index on this column dedupes replays. Any string up to
+  // 256 chars; UUIDs are conventional but not required (CloudEvents
+  // compatibility).
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string customer_id = 2 [(buf.validate.field).required = true];
+  string feature_id = 3 [(buf.validate.field).required = true];
+  int64 amount = 4 [(buf.validate.field).int64.gt = 0];
+  google.protobuf.Timestamp occurred_at = 5;
+  google.protobuf.Struct metadata = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+service EventService {
+  // Ingest a single usage event. Idempotent on idempotency_key.
+  // A future IngestEventBatch can be added without breaking this.
+  rpc IngestEvent(IngestEventRequest) returns (IngestEventResponse) {
+    option (google.api.http) = {
+      post: "/v1/events"
+      body: "*"
+    };
+  }
+}
+
+message IngestEventRequest {
+  // Caller-assigned event identifier. Unique per ingestion; replaying
+  // the same id is a no-op (returns duplicate=true).
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string customer_id = 2 [(buf.validate.field).required = true];
+  string feature_id = 3 [(buf.validate.field).required = true];
+  int64 amount = 4 [(buf.validate.field).int64.gt = 0];
+  google.protobuf.Timestamp occurred_at = 5 [(buf.validate.field).required = true];
+  google.protobuf.Struct metadata = 6;
+}
+message IngestEventResponse {}
