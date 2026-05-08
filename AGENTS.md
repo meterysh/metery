@@ -49,10 +49,11 @@ over ConnectRPC.
   key. Replays are silent no-ops (still `200 OK {}`) — duplicate
   visibility is server-side metrics, not response body.
 - **Pagination**: opaque cursor, server-controlled. Request:
-  `limit` + `cursor`. Response: `<resource>` array + `next_cursor`
-  (empty ⇒ end of results). Same semantics as AIP-158 with shorter
-  names; aligns better with REST/usage-billing convention than
-  `page_size` / `page_token`.
+  `optional int32 limit` + `optional string cursor` (both presence-
+  tracked so absence ⇒ "use server default" / "first page"). Response:
+  `<resource>` array + `next_cursor` (empty ⇒ end of results). Same
+  semantics as AIP-158 with shorter names; aligns with REST/usage-
+  billing convention rather than `page_size` / `page_token`.
 
 ## Build / generate
 

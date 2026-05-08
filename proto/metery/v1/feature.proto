@@ -71,8 +71,8 @@ message GetFeatureResponse {
 
 message ListFeaturesRequest {
   bool include_archived = 1;
-  int32 limit = 2 [(buf.validate.field).int32 = {gte: 0, lte: 1000}];
-  string cursor = 3;
+  optional int32 limit = 2 [(buf.validate.field).int32 = {gt: 0, lte: 1000}];
+  optional string cursor = 3;
 }
 message ListFeaturesResponse {
   repeated Feature features = 1;

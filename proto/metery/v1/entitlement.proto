@@ -106,8 +106,8 @@ message GetEntitlementResponse {
 
 message ListEntitlementsRequest {
   string customer_id = 1 [(buf.validate.field).required = true];
-  int32 limit = 2 [(buf.validate.field).int32 = {gte: 0, lte: 1000}];
-  string cursor = 3;
+  optional int32 limit = 2 [(buf.validate.field).int32 = {gt: 0, lte: 1000}];
+  optional string cursor = 3;
 }
 message ListEntitlementsResponse {
   repeated Entitlement entitlements = 1;
