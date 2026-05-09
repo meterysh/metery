@@ -30,7 +30,10 @@ message Rollover {
   int64 max_amount = 1 [(buf.validate.field).int64.gte = 0];
   // Allowed: "original" (cap at original grant amount),
   //          "remaining" (cap at unused-at-reset amount).
-  string type = 2 [(buf.validate.field).string = {in: ["original", "remaining"]}];
+  string type = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {in: ["original", "remaining"]}
+  ];
 }
 
 message TimeWindow {

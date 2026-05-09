@@ -33,6 +33,25 @@ over ConnectRPC.
   - `string = {in: [...]}` for closed-set discriminators. We deliberately
     chose strings + `in` over proto enums for clean JSON output.
   - `string.uuid = true` for UUID fields.
+  - **Always pair `uuid` / `in` / `pattern` with `required = true` on
+    proto3 scalar fields.** Protovalidate honors implicit field presence:
+    rules like `uuid` and `in` are *skipped* when the value is the
+    default (`""`/`0`). Without `required`, an empty string silently
+    passes UUID and `in` checks. `required` forces the presence check
+    so empty inputs are rejected.
+  - **Mark `required = true` on always-populated message fields** (not
+    just request inputs). Proto3 generates message fields as Go
+    pointers, so the language can't express the invariant — the
+    validation rule documents it and `protovalidate.Validate` enforces
+    it on receive (catches malformed messages). Applies to:
+    - `created_at` on every entity, `effective_at` on Grant,
+      `occurred_at` on UsageEvent.
+    - Single-resource response wrappers: `CreateFeatureResponse.feature`,
+      `GetEntitlementValueResponse.value`, etc.
+
+    Do *not* mark fields that are state-conditional: `archived_at`,
+    `deleted_at`, `voided_at`, `expires_at`. List/empty responses don't
+    need it (`repeated` is always "set"; `{}` has no fields).
 - ISO-8601 durations are plain strings (`"P1M"`); we don't use
   `google.protobuf.Duration` because billing periods are calendar-aware.
   Field names are semantic (`duration`, `interval`); format lives in the
@@ -74,3 +93,8 @@ buf generate       # writes to gen/go/ (committed; consumers don't need buf)
 - Go + Postgres (SQLite for tests / single-tenant dev).
 - Module path: `github.com/meterysh/metery` (placeholder; change in
   proto `option go_package` if you rename the org).
+- **UUIDs**: generate **v7** (`uuid.NewV7()` from `github.com/google/uuid`
+  v1.6+). Format-compatible with `string.uuid = true` validation and
+  Postgres `uuid` column; gives sortable IDs for better B-tree locality.
+  Never `uuid.New()` (that's v4). Caller-assigned IDs (`UsageEvent.id`,
+  `Feature.id`) are exempt — caller picks any format up to 256 chars.

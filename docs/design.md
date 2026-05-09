@@ -195,7 +195,7 @@ just "give user 1000 credits, check, spend":
 # 1. Define the feature once
 POST /v1/features
 { "id": "api_calls", "type": "metered",
-  "display_name": "API calls", "unit": "api_call" }
+  "name": "API calls", "unit": "api_call" }
 
 # 2. Provision an entitlement for the customer (one-time)
 POST /v1/customers/user_123/entitlements
@@ -218,7 +218,7 @@ For a **boolean** feature the flow is even shorter:
 
 ```
 POST /v1/features
-{ "id": "priority_support", "type": "boolean", "display_name": "Priority support" }
+{ "id": "priority_support", "type": "boolean", "name": "Priority support" }
 
 POST /v1/customers/user_123/entitlements
 { "customer_id": "user_123", "feature_id": "priority_support" }
@@ -248,7 +248,7 @@ Metered:
 ```
 POST /v1/features
 { "id": "api_calls", "type": "metered",
-  "display_name": "API calls", "unit": "api_call" }
+  "name": "API calls", "unit": "api_call" }
 ```
 
 Boolean:
@@ -256,7 +256,7 @@ Boolean:
 ```
 POST /v1/features
 { "id": "priority_support", "type": "boolean",
-  "display_name": "Priority support" }
+  "name": "Priority support" }
 ```
 
 ### 6.2 Provision an entitlement (per customer, per feature)
@@ -371,7 +371,7 @@ because the server-assigned UUID isn't recoverable otherwise.
 CREATE TABLE features (
   id            TEXT PRIMARY KEY,        -- "api_calls", "tokens", ...
   type          TEXT NOT NULL CHECK (type IN ('metered', 'boolean')),
-  display_name  TEXT NOT NULL,
+  name  TEXT NOT NULL,
   unit          TEXT,                    -- required for metered, NULL for boolean
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   archived_at   TIMESTAMPTZ,

@@ -18,13 +18,19 @@ option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
 message Feature {
   string id = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string = {max_len: 64, pattern: "^[a-z][a-z0-9_]*$"}
+    (buf.validate.field).string = {
+      max_len: 64
+      pattern: "^[a-z][a-z0-9_]*$"
+    }
   ]; // slug, e.g. "api_calls"
-  string type = 2 [(buf.validate.field).string = {in: ["metered", "boolean"]}];
-  string display_name = 3 [(buf.validate.field).required = true];
+  string type = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {in: ["metered", "boolean"]}
+  ];
+  string name = 3 [(buf.validate.field).required = true];
   string unit = 4; // required for metered, empty for boolean (cross-field check)
-  google.protobuf.Timestamp created_at = 5;
-  google.protobuf.Timestamp archived_at = 6;
+  google.protobuf.Timestamp created_at = 5 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp archived_at = 6; // null on active features
 }
 
 service FeatureService {
@@ -52,26 +58,35 @@ service FeatureService {
 message CreateFeatureRequest {
   string id = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string = {max_len: 64, pattern: "^[a-z][a-z0-9_]*$"}
+    (buf.validate.field).string = {
+      max_len: 64
+      pattern: "^[a-z][a-z0-9_]*$"
+    }
   ];
-  string type = 2 [(buf.validate.field).string = {in: ["metered", "boolean"]}];
-  string display_name = 3 [(buf.validate.field).required = true];
+  string type = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {in: ["metered", "boolean"]}
+  ];
+  string name = 3 [(buf.validate.field).required = true];
   string unit = 4; // required for metered; ignored for boolean
 }
 message CreateFeatureResponse {
-  Feature feature = 1;
+  Feature feature = 1 [(buf.validate.field).required = true];
 }
 
 message GetFeatureRequest {
-  string id = 1;
+  string id = 1 [(buf.validate.field).required = true];
 }
 message GetFeatureResponse {
-  Feature feature = 1;
+  Feature feature = 1 [(buf.validate.field).required = true];
 }
 
 message ListFeaturesRequest {
   bool include_archived = 1;
-  optional int32 limit = 2 [(buf.validate.field).int32 = {gt: 0, lte: 1000}];
+  optional int32 limit = 2 [(buf.validate.field).int32 = {
+    gt: 0
+    lte: 1000
+  }];
   optional string cursor = 3;
 }
 message ListFeaturesResponse {
@@ -80,6 +95,6 @@ message ListFeaturesResponse {
 }
 
 message ArchiveFeatureRequest {
-  string id = 1;
+  string id = 1 [(buf.validate.field).required = true];
 }
 message ArchiveFeatureResponse {}

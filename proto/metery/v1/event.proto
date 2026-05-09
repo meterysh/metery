@@ -21,10 +21,13 @@ message UsageEvent {
   ];
   string customer_id = 2 [(buf.validate.field).required = true];
   string feature_id = 3 [(buf.validate.field).required = true];
-  int64 amount = 4 [(buf.validate.field).int64.gt = 0];
-  google.protobuf.Timestamp occurred_at = 5;
-  google.protobuf.Struct metadata = 6;
-  google.protobuf.Timestamp created_at = 7;
+  int64 amount = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).int64.gt = 0
+  ];
+  google.protobuf.Struct metadata = 5;
+  google.protobuf.Timestamp occurred_at = 6 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp created_at = 7 [(buf.validate.field).required = true];
 }
 
 service EventService {
@@ -47,7 +50,10 @@ message IngestEventRequest {
   ];
   string customer_id = 2 [(buf.validate.field).required = true];
   string feature_id = 3 [(buf.validate.field).required = true];
-  int64 amount = 4 [(buf.validate.field).int64.gt = 0];
+  int64 amount = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).int64.gt = 0
+  ];
   google.protobuf.Timestamp occurred_at = 5 [(buf.validate.field).required = true];
   google.protobuf.Struct metadata = 6;
 }
