@@ -53,7 +53,7 @@ and/or period resets.
 - One write path:
   - `ingest_event(id, customer, type, time, payload)` — raw event;
     server aggregates per the relevant meter. `time` is optional;
-    defaults to ingest time (CloudEvents convention).
+    server defaults to ingest time when absent.
 - Stack: Go + Postgres (SQLite for tests / single-tenant dev). Aggregation
   is plain Postgres queries; no streaming infra in v0.
 - Idempotent event ingestion (PK on caller-assigned `id`).

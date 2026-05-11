@@ -10,12 +10,19 @@ the ledger or breaking existing API contracts. Anchored to
 
 **In:**
 
-- Features (metered + boolean), entitlements, grants, usage events.
+- Customers, meters, features (metered + boolean), entitlements,
+  grants, raw usage events.
+- Dual-ID for the named resources — server-generated UUID v7 `id` +
+  caller-assigned identifier (`Customer.key`, `Meter.slug`,
+  `Feature.slug`).
+- Terse event envelope: `id`, `customer`, `type`, `time`, `payload`.
 - **Manual grants only** — caller decides when to add credits.
 - Hot path: `has_access`, `balance`, `ingest_event`.
-- Boolean entitlements: row-existence-based access checks.
+- Boolean entitlements: row-existence-based access checks
+  (`meter_slug` empty on Feature is the discriminator).
 - Periodic reset (computed on read) + recurring grants (in-process worker).
-- Idempotent event ingestion.
+- Idempotent event ingestion (PK on caller-assigned `id`).
+- Keyset pagination by UUID v7 across all `List*` endpoints.
 - Go service, Postgres / SQLite.
 
 **Out (deferred):**
@@ -51,8 +58,10 @@ Adds, on top of v0:
   this customer on"; Metery is a downstream materialised view kept in
   sync via webhooks (likely shape; final call deferred to v1 design doc).
 - **Static entitlements** — typed config values like `seats: 5`,
-  `rate_limit: 100`. New `type='static'` on features + a value column
-  (or JSONB for richer types).
+  `rate_limit: 100`. New `value` column on `entitlements` (scalar
+  or JSONB for richer types); `Feature.meter_slug` empty + an
+  additional "is_static" hint, or a third Feature mode. Final
+  discriminator shape deferred to v1 design doc.
 - **Time-bounded boolean** — `expires_at` on entitlements so trial /
   subscription-window access can be modeled without external lifecycle
   glue.
