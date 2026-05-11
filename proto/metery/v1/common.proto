@@ -13,30 +13,45 @@ option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
 // google.protobuf.Duration because billing periods are calendar-aware —
 // "one month" varies in length and can't be expressed in fixed seconds.
 message Period {
-  string duration = 1 [(buf.validate.field).string.pattern = "^P.+$"]; // e.g. "P1M"
+  string duration = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^P.+$"
+  ]; // e.g. "P1M"
   google.protobuf.Timestamp anchor = 2;
 }
 
 message Recurrence {
-  string interval = 1 [(buf.validate.field).string.pattern = "^P.+$"]; // ISO-8601, e.g. "P1M"
+  string interval = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^P.+$"
+  ]; // ISO-8601, e.g. "P1M"
   google.protobuf.Timestamp anchor = 2;
 }
 
 message Expiration {
-  string duration = 1 [(buf.validate.field).string.pattern = "^P.+$"]; // ISO-8601, e.g. "P1M"
+  string duration = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^P.+$"
+  ]; // ISO-8601, e.g. "P1M"
 }
 
 message Rollover {
-  int64 max_amount = 1 [(buf.validate.field).int64.gte = 0];
-  // Allowed: "original" (cap at original grant amount),
-  //          "remaining" (cap at unused-at-reset amount).
+  int64 max_amount = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).int64.gt = 0
+  ];
   string type = 2 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string = {in: ["original", "remaining"]}
+    (buf.validate.field).string = {
+      in: [
+        "original",
+        "remaining"
+      ]
+    }
   ];
 }
 
 message TimeWindow {
-  google.protobuf.Timestamp from = 1;
-  google.protobuf.Timestamp to = 2;
+  google.protobuf.Timestamp from = 1 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp to = 2 [(buf.validate.field).required = true];
 }

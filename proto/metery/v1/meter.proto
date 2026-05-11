@@ -1,0 +1,128 @@
+syntax = "proto3";
+
+// Meters define how raw events are aggregated into metric values.
+// Features wrap meters for billing semantics.
+//
+// Allowed `aggregation` values: count | sum | avg | min | max | unique_count.
+// `value_property` is a JSON path on UsageEvent.payload; required for
+// sum/avg/min/max/unique_count, ignored for count.
+package metery.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
+
+message Meter {
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.uuid = true
+  ]; // server-generated UUID v7
+  string slug = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {
+      max_len: 64
+      pattern: "^[a-z][a-z0-9_]*$"
+    }
+  ]; // caller-assigned, URL-safe, immutable, unique
+  string name = 3 [(buf.validate.field).required = true];
+  string aggregation = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {
+      in: [
+        "count",
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "unique_count"
+      ]
+    }
+  ];
+  // Filters which raw events feed this meter (matches UsageEvent.type).
+  string event_type = 5 [(buf.validate.field).required = true];
+  // JSON path on UsageEvent.payload. Required for sum/avg/min/max/unique_count.
+  string value_property = 6;
+  google.protobuf.Timestamp created_at = 7 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp archived_at = 8;
+}
+
+service MeterService {
+  rpc CreateMeter(CreateMeterRequest) returns (CreateMeterResponse) {
+    option (google.api.http) = {
+      post: "/v1/meters"
+      body: "*"
+      response_body: "meter"
+    };
+  }
+  rpc GetMeter(GetMeterRequest) returns (GetMeterResponse) {
+    option (google.api.http) = {
+      get: "/v1/meters/{id_or_slug}"
+      response_body: "meter"
+    };
+  }
+  rpc ListMeters(ListMetersRequest) returns (ListMetersResponse) {
+    option (google.api.http) = {
+      get: "/v1/meters"
+      response_body: "meters"
+    };
+  }
+  rpc ArchiveMeter(ArchiveMeterRequest) returns (ArchiveMeterResponse) {
+    option (google.api.http) = {delete: "/v1/meters/{id_or_slug}"};
+  }
+}
+
+message CreateMeterRequest {
+  string slug = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {
+      max_len: 64
+      pattern: "^[a-z][a-z0-9_]*$"
+    }
+  ];
+  string name = 2 [(buf.validate.field).required = true];
+  string aggregation = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {
+      in: [
+        "count",
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "unique_count"
+      ]
+    }
+  ];
+  string event_type = 4 [(buf.validate.field).required = true];
+  string value_property = 5;
+}
+message CreateMeterResponse {
+  Meter meter = 1 [(buf.validate.field).required = true];
+}
+
+message GetMeterRequest {
+  // Either Meter.id (UUID) or Meter.slug. Server resolves.
+  string id_or_slug = 1 [(buf.validate.field).required = true];
+}
+message GetMeterResponse {
+  Meter meter = 1 [(buf.validate.field).required = true];
+}
+
+message ListMetersRequest {
+  bool include_archived = 1;
+  optional int32 limit = 2 [(buf.validate.field).int32 = {
+    gt: 0
+    lte: 1000
+  }];
+  optional string after = 3 [(buf.validate.field).string.uuid = true];
+}
+message ListMetersResponse {
+  repeated Meter meters = 1;
+}
+
+message ArchiveMeterRequest {
+  string id_or_slug = 1 [(buf.validate.field).required = true];
+}
+message ArchiveMeterResponse {}

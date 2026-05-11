@@ -22,11 +22,17 @@ message Grant {
     (buf.validate.field).string.uuid = true
   ];
   string parent_grant_id = 3; // set on children of a recurring grant
-  int64 amount = 4 [(buf.validate.field).int64.gt = 0];
-  int32 priority = 5 [(buf.validate.field).int32 = {
-    gte: 0
-    lte: 1000
-  }]; // lower number burns first
+  int64 amount = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).int64.gt = 0
+  ];
+  int32 priority = 5 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).int32 = {
+      gte: 0
+      lte: 1000
+    }
+  ]; // lower number burns first
   Recurrence recurrence = 6; // optional
   Rollover rollover = 7; // optional
   google.protobuf.Struct metadata = 8;
@@ -39,13 +45,16 @@ message Grant {
 service GrantService {
   rpc CreateGrant(CreateGrantRequest) returns (CreateGrantResponse) {
     option (google.api.http) = {
-      post: "/v1/customers/{customer_id}/entitlements/{feature_id}/grants"
+      post: "/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}/grants"
       body: "*"
       response_body: "grant"
     };
   }
   rpc ListGrants(ListGrantsRequest) returns (ListGrantsResponse) {
-    option (google.api.http) = {get: "/v1/customers/{customer_id}/entitlements/{feature_id}/grants"};
+    option (google.api.http) = {
+      get: "/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}/grants"
+      response_body: "grants"
+    };
   }
   rpc VoidGrant(VoidGrantRequest) returns (VoidGrantResponse) {
     option (google.api.http) = {delete: "/v1/grants/{id}"};
@@ -53,37 +62,39 @@ service GrantService {
 }
 
 message CreateGrantRequest {
-  string customer_id = 1 [(buf.validate.field).required = true];
-  string feature_id = 2 [(buf.validate.field).required = true];
-  int64 amount = 3 [(buf.validate.field).int64.gt = 0];
+  string customer_id_or_key = 1 [(buf.validate.field).required = true];
+  string feature_id_or_slug = 2 [(buf.validate.field).required = true];
+  int64 amount = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).int64.gt = 0
+  ];
   // Default 100 if absent. 0 is valid (highest priority).
   optional int32 priority = 4 [(buf.validate.field).int32 = {
     gte: 0
     lte: 1000
   }];
-  google.protobuf.Timestamp effective_at = 5; // default now
-  Expiration expiration = 6; // optional
-  Recurrence recurrence = 7; // optional
-  Rollover rollover = 8; // optional
-  google.protobuf.Struct metadata = 9;
+  Expiration expiration = 5; // optional
+  Recurrence recurrence = 6; // optional
+  Rollover rollover = 7; // optional
+  google.protobuf.Struct metadata = 8;
+  google.protobuf.Timestamp effective_at = 9; // default now
 }
 message CreateGrantResponse {
   Grant grant = 1 [(buf.validate.field).required = true];
 }
 
 message ListGrantsRequest {
-  string customer_id = 1 [(buf.validate.field).required = true];
-  string feature_id = 2 [(buf.validate.field).required = true];
+  string customer_id_or_key = 1 [(buf.validate.field).required = true];
+  string feature_id_or_slug = 2 [(buf.validate.field).required = true];
   bool include_voided = 3;
   optional int32 limit = 4 [(buf.validate.field).int32 = {
     gt: 0
     lte: 1000
   }];
-  optional string cursor = 5;
+  optional string after = 5 [(buf.validate.field).string.uuid = true];
 }
 message ListGrantsResponse {
   repeated Grant grants = 1;
-  string next_cursor = 2;
 }
 
 message VoidGrantRequest {

@@ -10,35 +10,53 @@ Metery is a usage-billing / entitlements backend in the spirit of OpenMeter.
 Integrated apps ask Metery two questions:
 
 1. **Can this customer perform this action?** (entitlement check)
-2. **Record that this customer performed this action.** (usage event)
+2. **Record that this customer's raw event happened.** (event ingest)
 
-Internally, Metery keeps a **per-feature credit ledger** per
-`(customer, feature)` pair and derives a balance from grants minus usage.
-Each capability of the integrated app (API calls, tokens, image
-generation, …) is modelled as its own **feature** with its own balance,
-grants, and reset cadence. Subscriptions top up balances via recurring
-grants and/or period resets.
+Five core concepts:
+
+- **Customer** — the billable / addressable entity. Caller creates first.
+- **Meter** — defines how raw events are aggregated into a metric value
+  (count, sum, avg, etc.) — server-side aggregation.
+- **Feature** — a named billing capability backed by a meter (metered)
+  or simply yes/no access (boolean).
+- **Entitlement** — a `(customer, feature)` access record with optional
+  usage-period config.
+- **Grant** — credits added to a metered entitlement, with priority,
+  expiration, recurrence, and rollover.
+
+Raw usage events flow in through `IngestEvent`; the meter associated
+with each metered feature aggregates them into usage that draws down
+grant credits. Subscriptions (v1+) top balances up via recurring grants
+and/or period resets.
 
 ## 2. Goals (v0)
 
-- Multiple **features** per system. Each feature has a `type`:
-  - **metered** — measured in its own unit (`api_call`, `token`, `image`).
-    "Credit" is the abstract term for one unit of a metered feature.
-  - **boolean** — yes/no access to a capability (e.g. `priority_support`,
-    `webhooks_enabled`). No balance, no grants, no usage events — just
-    "does the customer have this entitlement or not."
-- Per-customer **entitlements** scoped to a feature, with optional periodic
-  reset (metered only).
+- **Customers** are first-class — caller creates them before granting
+  entitlements or ingesting events. Dual ID: server-generated `id`
+  (UUID v7) for our stable internal handle; caller-assigned `key`
+  (opaque) for natural references. Matches the OpenMeter / Lago / Orb
+  / Stripe convention.
+- **Meters** define server-side aggregation from raw events:
+  `aggregation` (`count` / `sum` / `avg` / `min` / `max` / `unique_count`),
+  `event_type` filter, optional `value_property` JSON path.
+- **Features** are billing capabilities. `meter_slug` non-empty ⇒ metered
+  (uses meter for usage); `meter_slug` empty ⇒ boolean (entitlement
+  existence is the access bit).
+- Per-customer **entitlements** scoped to a feature, with optional
+  periodic reset (metered only).
 - **Grants** that add credits to a metered entitlement, with priority,
   expiration, recurrence, and rollover at period boundary.
-- Two read paths (uniform API, dispatched by feature type):
+- Two read paths (uniform API, dispatched by feature kind):
   - `has_access(customer, feature [, cost])` → bool
   - `value(customer, feature)` → metered: balance + period window;
     boolean: has_access.
-- One write path (metered only):
-  - `ingest_event(id, customer, feature, amount, occurred_at)`
-- Stack: Go + Postgres (SQLite for tests / single-tenant dev).
-- Idempotent event ingestion.
+- One write path:
+  - `ingest_event(id, customer, type, time, payload)` — raw event;
+    server aggregates per the relevant meter. `time` is optional;
+    defaults to ingest time (CloudEvents convention).
+- Stack: Go + Postgres (SQLite for tests / single-tenant dev). Aggregation
+  is plain Postgres queries; no streaming infra in v0.
+- Idempotent event ingestion (PK on caller-assigned `id`).
 
 ## 3. Non-goals (v0, revisit later)
 
@@ -63,39 +81,38 @@ See [roadmap.md](roadmap.md) for the v1 / v1+ tiers where these land.
 
 ## 4. Mental model
 
-We are using the **metered-features** model: each capability of the
-integrated app is its own feature. Most features are metered (own balance,
-own ledger); some are boolean (yes/no access). Features are **not**
-interchangeable — credits in `api_calls` cannot be spent on `tokens`. The
-cost of a metered action is denominated in the feature's own unit
-(1 API call = 1 `api_call`-credit; 1500 tokens = 1500 `token`-credits).
+Capabilities of the integrated app are exposed as **features**. Metered
+features sit on top of **meters** which aggregate raw events into a
+metric value. Boolean features are pure yes/no access checks.
 
 | Concept         | What it is                                                      |
 |-----------------|-----------------------------------------------------------------|
-| **Customer**     | The billable entity (user, account, org). Opaque string ID.     |
-| **Feature**     | A named capability with a `type` (`metered` or `boolean`). Metered features have a unit (e.g. `api_call`, `token`). |
+| **Customer**    | First-class billable entity. Server-generated `id` (UUID v7) + caller-assigned `key` (opaque, unique). What other resources reference. |
+| **Meter**       | Server-side aggregation definition: `aggregation` (count/sum/…), `event_type` filter, `value_property` JSON path. Multiple features can wrap one meter. |
+| **Feature**     | Billing capability. `meter_slug` set ⇒ metered (uses meter for usage); empty ⇒ boolean (entitlement existence is the access bit). |
 | **Entitlement** | A `(customer, feature)` access record. For metered features, also carries usage-period config. |
-| **Grant**       | Credits added to one *metered* entitlement. Has priority, expiry, recurrence, rollover. (Not used for boolean.) |
-| **Usage event** | Append-only record of consumption against one *metered* feature. (Not used for boolean.) |
-| **Ledger**      | The set of grants + usage events for metered features. Balance is derived from it. |
+| **Grant**       | Credits added to one *metered* entitlement. Has priority, expiry, recurrence, rollover. |
+| **Usage event** | Append-only raw observation: `id`, `customer`, `type`, `time`, `payload`. Server aggregates via meter. |
+| **Ledger**      | The set of grants + usage events for metered features. Balance is derived: grants minus aggregated usage. |
 
 **Worked example — a Pro subscriber:**
 
-| Feature              | Type    | Unit     | Grant / Value                  | Cost per action            |
-|----------------------|---------|----------|--------------------------------|----------------------------|
-| `api_calls`          | metered | api_call | 10,000 / month, recurring      | one API call → 1           |
-| `tokens`             | metered | token    | 1,000,000 / month, recurring   | one chat message → variable, sized by completion |
-| `priority_support`   | boolean | —        | granted (entitlement exists)   | — (gate check, no spend)   |
+| Meter           | Aggregation | event_type   | value_property |
+|-----------------|-------------|--------------|----------------|
+| `api_calls`     | count       | `api_call`   | —              |
+| `tokens`        | sum         | `llm_call`   | `$.tokens`     |
 
-The integrated app maps action → (feature, amount) before calling Metery.
-Metery never knows what an "action" is — it sees only `(customer, feature,
-amount)`.
+| Feature              | meter_slug   | Grant / Value                  |
+|----------------------|--------------|--------------------------------|
+| `api_calls`          | `api_calls`  | 10,000 / month, recurring      |
+| `tokens`             | `tokens`     | 1,000,000 / month, recurring   |
+| `priority_support`   | empty (boolean) | granted (entitlement exists)|
 
-> **Note (deferred capability).** Nothing in this model prevents adding a
-> generic `credits` wallet feature later (universal currency that the
-> app's cost center can fall back to when a quota feature is exhausted).
-> No schema change required — it would just be another feature row. Out
-> of scope for v0; flagged here so we don't design ourselves out of it.
+The integrated app emits raw events with the appropriate `type` and
+`payload`. The relevant meter aggregates them; the feature's grants
+draw down. *Same event can drive multiple meters/features* — e.g. an
+`llm_call` event with `tokens: 1500` could feed both a `tokens` meter
+(SUM of `$.tokens`) and a separate `llm_calls_count` meter (COUNT).
 
 **Invariant.** For any entitlement at time `T`:
 
@@ -169,70 +186,89 @@ in payloads match the proto.
 
 ### Endpoint reference
 
-| Method | REST                                                                          | Connect RPC                                  |
-|--------|-------------------------------------------------------------------------------|----------------------------------------------|
-| POST   | `/v1/features`                                                                | `FeatureService/CreateFeature`               |
-| GET    | `/v1/features`                                                                | `FeatureService/ListFeatures`                |
-| GET    | `/v1/features/{id}`                                                           | `FeatureService/GetFeature`                  |
-| DELETE | `/v1/features/{id}`                                                           | `FeatureService/ArchiveFeature`              |
-| POST   | `/v1/customers/{customer_id}/entitlements`                                      | `EntitlementService/CreateEntitlement`       |
-| GET    | `/v1/customers/{customer_id}/entitlements`                                      | `EntitlementService/ListEntitlements`        |
-| GET    | `/v1/customers/{customer_id}/entitlements/{feature_id}`                         | `EntitlementService/GetEntitlement`          |
-| DELETE | `/v1/customers/{customer_id}/entitlements/{feature_id}`                         | `EntitlementService/DeleteEntitlement`       |
-| GET    | `/v1/customers/{customer_id}/entitlements/{feature_id}/value`                   | `EntitlementService/GetEntitlementValue`     |
-| POST   | `/v1/customers/{customer_id}/entitlements/{feature_id}/reset`                   | `EntitlementService/ResetEntitlement`        |
-| POST   | `/v1/customers/{customer_id}/entitlements/{feature_id}/grants`                  | `GrantService/CreateGrant`                   |
-| GET    | `/v1/customers/{customer_id}/entitlements/{feature_id}/grants`                  | `GrantService/ListGrants`                    |
-| DELETE | `/v1/grants/{id}`                                                             | `GrantService/VoidGrant`                     |
-| POST   | `/v1/events`                                                                  | `EventService/IngestEvent`                   |
+| Method | REST                                                                              | Connect RPC                                  |
+|--------|-----------------------------------------------------------------------------------|----------------------------------------------|
+| POST   | `/v1/customers`                                                                   | `CustomerService/CreateCustomer`             |
+| GET    | `/v1/customers`                                                                   | `CustomerService/ListCustomers`              |
+| GET    | `/v1/customers/{id_or_key}`                                                       | `CustomerService/GetCustomer`                |
+| PATCH  | `/v1/customers/{id_or_key}`                                                       | `CustomerService/UpdateCustomer`             |
+| DELETE | `/v1/customers/{id_or_key}`                                                       | `CustomerService/DeactivateCustomer`         |
+| POST   | `/v1/meters`                                                                      | `MeterService/CreateMeter`                   |
+| GET    | `/v1/meters`                                                                      | `MeterService/ListMeters`                    |
+| GET    | `/v1/meters/{id_or_slug}`                                                         | `MeterService/GetMeter`                      |
+| DELETE | `/v1/meters/{id_or_slug}`                                                         | `MeterService/ArchiveMeter`                  |
+| POST   | `/v1/features`                                                                    | `FeatureService/CreateFeature`               |
+| GET    | `/v1/features`                                                                    | `FeatureService/ListFeatures`                |
+| GET    | `/v1/features/{id_or_slug}`                                                       | `FeatureService/GetFeature`                  |
+| DELETE | `/v1/features/{id_or_slug}`                                                       | `FeatureService/ArchiveFeature`              |
+| POST   | `/v1/customers/{customer_id_or_key}/entitlements`                                 | `EntitlementService/CreateEntitlement`       |
+| GET    | `/v1/customers/{customer_id_or_key}/entitlements`                                 | `EntitlementService/ListEntitlements`        |
+| GET    | `/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}`            | `EntitlementService/GetEntitlement`          |
+| DELETE | `/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}`            | `EntitlementService/DeleteEntitlement`       |
+| GET    | `/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}/value`      | `EntitlementService/GetEntitlementValue`     |
+| POST   | `/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}/reset`      | `EntitlementService/ResetEntitlement`        |
+| POST   | `/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}/grants`     | `GrantService/CreateGrant`                   |
+| GET    | `/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}/grants`     | `GrantService/ListGrants`                    |
+| DELETE | `/v1/grants/{id}`                                                                 | `GrantService/VoidGrant`                     |
+| POST   | `/v1/events`                                                                      | `EventService/IngestEvent`                   |
 
 ### 6.0 v0 minimal happy path
 
-The simplest end-to-end use of Metery, no subscriptions, no recurrence —
-just "give user 1000 credits, check, spend":
+End-to-end use of Metery, no subscriptions, no recurrence — *"customer
+exists, give them 1000 api-call credits, check, ingest"*:
 
 ```
-# 1. Define the feature once
-POST /v1/features
-{ "id": "api_calls", "type": "metered",
-  "name": "API calls", "unit": "api_call" }
+# 1. Create the customer (once, at signup)
+POST /v1/customers
+{ "key": "user_123", "name": "Acme Corp" }
 
-# 2. Provision an entitlement for the customer (one-time)
+# 2. Define the meter (once, admin)
+POST /v1/meters
+{ "slug": "api_calls", "name": "API calls",
+  "aggregation": "count", "event_type": "api_call" }
+
+# 3. Define the feature backed by that meter (once, admin)
+POST /v1/features
+{ "slug": "api_calls", "name": "API calls", "meter_slug": "api_calls" }
+# server resolves slug → meter UUID for the DB FK (wire exposes meter_slug)
+
+# 4. Provision an entitlement for the customer (once)
 POST /v1/customers/user_123/entitlements
-{ "feature_id": "api_calls" }
+{ "feature_id_or_slug": "api_calls" }
 # no usage_period ⇒ never resets
 
-# 3. Grant credits manually (one-time, no recurrence/expiration)
+# 5. Grant credits manually (one-time, no recurrence/expiration)
 POST /v1/customers/user_123/entitlements/api_calls/grants
 { "amount": "1000" }
 
-# 4. Hot path: check + ingest on every action
+# 6. Hot path: check + ingest on every action
 GET  /v1/customers/user_123/entitlements/api_calls/value?cost=1
 
 POST /v1/events
-{ "id": "...", "customer_id": "user_123", "feature_id": "api_calls",
-  "amount": "1", "occurred_at": "..." }
+{ "id": "req_abc123", "customer": "user_123",
+  "type": "api_call", "time": "..." }   # time optional; defaults to now
 ```
 
-For a **boolean** feature the flow is even shorter:
+For a **boolean** feature the flow skips the meter and grant:
 
 ```
 POST /v1/features
-{ "id": "priority_support", "type": "boolean", "name": "Priority support" }
+{ "slug": "priority_support", "name": "Priority support" }
+# meter_slug omitted ⇒ boolean feature
 
 POST /v1/customers/user_123/entitlements
-{ "customer_id": "user_123", "feature_id": "priority_support" }
+{ "feature_id_or_slug": "priority_support" }
 # row exists ⇒ has access
 
 GET  /v1/customers/user_123/entitlements/priority_support/value
-→ { "value": { "type": "boolean", "has_access": true } }
+→ { "has_access": true }
 
 # Revoke:
 DELETE /v1/customers/user_123/entitlements/priority_support
 ```
 
-(Path params: `customer_id` and `feature_id` are bound from the URL and
-omitted from the request body when present in the path.)
+(Path params: `customer_id_or_key` and `feature_id_or_slug` are bound
+from the URL and omitted from request body when present in the path.)
 
 > **Note on JSON int64.** protojson serialises `int64` as a JSON string
 > (`"1000"` not `1000`) to avoid JavaScript precision loss. Caller
@@ -241,22 +277,32 @@ omitted from the request body when present in the path.)
 Everything below (recurrence, expiration, rollover, periodic reset) is
 optional and only needed when you graduate to subscription-style billing.
 
-### 6.1 Define a feature (one-time setup, admin)
+### 6.1 Define a meter and feature (one-time setup, admin)
 
-Metered:
+Meter (server-side aggregation):
 
 ```
+POST /v1/meters
+{
+  "slug":           "tokens",
+  "name":           "LLM tokens",
+  "aggregation":    "sum",
+  "event_type":     "llm_call",
+  "value_property": "$.tokens"
+}
+→ { "id": "<uuid>", "slug": "tokens", ... }
+```
+
+Feature (billing wrapper):
+
+```
+# Metered — backed by a meter (caller passes slug; server resolves to UUID)
 POST /v1/features
-{ "id": "api_calls", "type": "metered",
-  "name": "API calls", "unit": "api_call" }
-```
+{ "slug": "tokens", "name": "Tokens", "meter_slug": "tokens" }
 
-Boolean:
-
-```
+# Boolean — meter_slug omitted
 POST /v1/features
-{ "id": "priority_support", "type": "boolean",
-  "name": "Priority support" }
+{ "slug": "priority_support", "name": "Priority support" }
 ```
 
 ### 6.2 Provision an entitlement (per customer, per feature)
@@ -264,7 +310,7 @@ POST /v1/features
 ```
 POST /v1/customers/user_123/entitlements
 {
-  "feature_id":   "api_calls",
+  "feature_id_or_slug": "tokens",
   "usage_period": { "duration": "P1M", "anchor": "2026-05-01T00:00:00Z" }
 }
 ```
@@ -272,9 +318,9 @@ POST /v1/customers/user_123/entitlements
 ### 6.3 Grant credits
 
 ```
-POST /v1/customers/user_123/entitlements/api_calls/grants
+POST /v1/customers/user_123/entitlements/tokens/grants
 {
-  "amount":       "10000",
+  "amount":       "1000000",
   "priority":     100,
   "effective_at": "2026-05-01T00:00:00Z",
   "expiration":   { "duration": "P1M" },
@@ -289,12 +335,11 @@ Metered — pass `cost` as a query param; full ledger snapshot comes back
 (REST response is unwrapped via `response_body: "value"`):
 
 ```
-GET /v1/customers/user_123/entitlements/api_calls/value?cost=1
+GET /v1/customers/user_123/entitlements/tokens/value?cost=1500
 → {
-  "type":         "metered",
   "has_access":   true,
-  "balance":      "9742",
-  "usage":        "258",
+  "balance":      "987200",
+  "usage":        "12800",
   "overage":      "0",
   "usage_period": { "from": "2026-05-01T00:00:00Z", "to": "2026-06-01T00:00:00Z" },
   "last_reset":   "2026-05-01T00:00:00Z"
@@ -305,12 +350,13 @@ Boolean — `cost` is ignored; result is row existence:
 
 ```
 GET /v1/customers/user_123/entitlements/priority_support/value
-→ { "type": "boolean", "has_access": true }
+→ { "has_access": true }
 ```
 
-If the entitlement does not exist for the customer, the response is
-`{ "type": "<feature.type>", "has_access": false }`. Caller does not
-need to know the feature's type ahead of time.
+The caller discriminates on **field presence**: metered responses
+include `balance` (and friends); boolean responses include only
+`has_access`. If the entitlement does not exist for the customer, the
+response is `{ "has_access": false }`.
 
 > **Note.** Connect / gRPC clients receive the wrapped form
 > `{ "value": { ... } }` — `response_body` only affects the REST entry
@@ -322,20 +368,27 @@ need to know the feature's type ahead of time.
 POST /v1/events
 {
   "id":          "req_abc123",
-  "customer_id": "user_123",
-  "feature_id":  "api_calls",
-  "amount":      "1",
-  "occurred_at": "2026-05-08T10:11:12Z"
+  "customer":    "user_123",
+  "type":        "llm_call",
+  "time":        "2026-05-08T10:11:12Z",
+  "payload":     { "tokens": 1500, "model": "gpt-4" }
 }
 → 200 OK
 {}
 ```
 
+Events are **raw observations**. The relevant meter (configured for the
+feature whose entitlement is being checked) aggregates them into usage:
+e.g. a `tokens` meter with `aggregation: sum` and `value_property: $.tokens`
+adds `1500` to the customer's token usage.
+
 The caller-assigned `id` is **both** the event identifier and the
 idempotency key — replaying the same `id` is silently deduped at the
-unique-PK level and is also a successful no-op (also `200 OK {}`).
-UUIDs are conventional, but any unique string ≤ 256 chars works
-(CloudEvents compatibility).
+unique-PK level (also `200 OK {}`). UUIDs / ULIDs are conventional, but
+any unique string ≤ 256 chars works (CloudEvents compatibility).
+
+The `customer` field accepts either `Customer.id` (UUID) or
+`Customer.key` — server resolves and stores the key.
 
 Server-side metrics track dedupe rate; if a caller needs visibility
 into their replay frequency, that surfaces via dashboards rather than
@@ -368,24 +421,45 @@ because the server-assigned UUID isn't recoverable otherwise.
 ## 7. Data model (Postgres)
 
 ```sql
+CREATE TABLE customers (
+  id              UUID PRIMARY KEY,                     -- server-generated v7
+  key             TEXT NOT NULL UNIQUE,                 -- caller-assigned, immutable
+  name            TEXT NOT NULL,
+  metadata        JSONB,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deactivated_at  TIMESTAMPTZ                           -- soft delete
+);
+
+CREATE TABLE meters (
+  id              UUID PRIMARY KEY,                     -- server-generated v7
+  slug            TEXT NOT NULL UNIQUE,                 -- caller-assigned, immutable
+  name            TEXT NOT NULL,
+  aggregation     TEXT NOT NULL CHECK (aggregation IN
+                    ('count','sum','avg','min','max','unique_count')),
+  event_type      TEXT NOT NULL,
+  value_property  TEXT,                                 -- JSON path; null for count
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  archived_at     TIMESTAMPTZ
+);
+CREATE INDEX meters_by_event_type ON meters (event_type) WHERE archived_at IS NULL;
+
 CREATE TABLE features (
-  id            TEXT PRIMARY KEY,        -- "api_calls", "tokens", ...
-  type          TEXT NOT NULL CHECK (type IN ('metered', 'boolean')),
-  name  TEXT NOT NULL,
-  unit          TEXT,                    -- required for metered, NULL for boolean
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  archived_at   TIMESTAMPTZ,
-  CHECK ((type = 'metered' AND unit IS NOT NULL) OR (type = 'boolean' AND unit IS NULL))
+  id              UUID PRIMARY KEY,                     -- server-generated v7
+  slug            TEXT NOT NULL UNIQUE,                 -- caller-assigned, immutable
+  name            TEXT NOT NULL,
+  meter_id        UUID REFERENCES meters(id),           -- NULL ⇒ boolean feature
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  archived_at     TIMESTAMPTZ
 );
 
 CREATE TABLE entitlements (
-  id                 UUID PRIMARY KEY,
-  customer_id         TEXT NOT NULL,
-  feature_id         TEXT NOT NULL REFERENCES features(id),
-  usage_period_duration   TEXT,                 -- "P1M"; NULL = no reset
-  usage_period_anchor TIMESTAMPTZ,
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at         TIMESTAMPTZ
+  id                       UUID PRIMARY KEY,
+  customer_id              UUID NOT NULL REFERENCES customers(id),
+  feature_id               UUID NOT NULL REFERENCES features(id),
+  usage_period_duration    TEXT,                        -- "P1M"; NULL = no reset
+  usage_period_anchor      TIMESTAMPTZ,
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at               TIMESTAMPTZ
 );
 CREATE UNIQUE INDEX entitlements_active_uniq
   ON entitlements (customer_id, feature_id) WHERE deleted_at IS NULL;
@@ -393,41 +467,43 @@ CREATE UNIQUE INDEX entitlements_active_uniq
 CREATE TABLE grants (
   id                  UUID PRIMARY KEY,
   entitlement_id      UUID NOT NULL REFERENCES entitlements(id),
-  amount              NUMERIC NOT NULL CHECK (amount > 0),
+  amount              BIGINT NOT NULL CHECK (amount > 0),
   priority            INT    NOT NULL DEFAULT 100,
   effective_at        TIMESTAMPTZ NOT NULL,
-  expires_at          TIMESTAMPTZ,         -- effective_at + expiration.duration
-  recurrence_interval      TEXT,                -- "P1M" or NULL
+  expires_at          TIMESTAMPTZ,                      -- effective_at + expiration.duration
+  recurrence_interval TEXT,                             -- "P1M" or NULL
   recurrence_anchor   TIMESTAMPTZ,
-  rollover_max        NUMERIC,             -- NULL = no rollover
-  rollover_type       TEXT,                -- 'original' | 'remaining'
-  parent_grant_id     UUID REFERENCES grants(id), -- recurring chain
+  rollover_max        BIGINT,                           -- NULL = no rollover
+  rollover_type       TEXT,                             -- 'original' | 'remaining'
+  parent_grant_id     UUID REFERENCES grants(id),       -- recurring chain
   metadata            JSONB,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  voided_at           TIMESTAMPTZ          -- set on rollover void / manual revoke
+  voided_at           TIMESTAMPTZ                       -- soft-void
 );
 CREATE INDEX grants_by_entitlement_active
   ON grants (entitlement_id, priority, effective_at)
   WHERE voided_at IS NULL;
 
+-- Server bookkeeping columns (`created_at`, `processed_at`) are
+-- internal — not exposed on the wire.
 CREATE TABLE usage_events (
-  id              TEXT PRIMARY KEY,                       -- caller-assigned; PK ⇒ dedup
-  customer_id     TEXT NOT NULL,
-  feature_id      TEXT NOT NULL,
-  amount          NUMERIC NOT NULL CHECK (amount > 0),
-  occurred_at     TIMESTAMPTZ NOT NULL,
-  metadata        JSONB,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  id              TEXT PRIMARY KEY,                     -- caller-assigned; PK ⇒ dedup
+  customer        TEXT NOT NULL,                        -- resolved Customer.key
+  type            TEXT NOT NULL,                        -- matches Meter.event_type
+  time            TIMESTAMPTZ NOT NULL,                 -- caller may omit on ingest; API fills in now()
+  payload         JSONB,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),   -- internal: row insert time
+  processed_at    TIMESTAMPTZ                           -- internal: NULL until async pipeline rolls it up (v1+)
 );
 CREATE INDEX usage_events_lookup
-  ON usage_events (customer_id, feature_id, occurred_at);
+  ON usage_events (customer, type, time);
 
 -- Optional cache; rebuildable from the ledger.
 CREATE TABLE balance_snapshots (
   entitlement_id  UUID NOT NULL REFERENCES entitlements(id),
-  as_of           TIMESTAMPTZ NOT NULL,    -- typically a period boundary
-  balance         NUMERIC NOT NULL,
-  per_grant_state JSONB NOT NULL,          -- [{grant_id, remaining}, ...]
+  as_of           TIMESTAMPTZ NOT NULL,                 -- typically a period boundary
+  balance         BIGINT NOT NULL,
+  per_grant_state JSONB NOT NULL,                       -- [{grant_id, remaining}, ...]
   PRIMARY KEY (entitlement_id, as_of)
 );
 ```
@@ -437,35 +513,51 @@ CREATE TABLE balance_snapshots (
 - `usage_events` is append-only — no updates, no deletes. Corrections are
   separate negative-amount entries (deferred; v0 only positive amounts).
 - `grants` are append-only except for `voided_at` (soft-void).
-- `balance_snapshots` is purely a derived cache; if it's empty, balance is
-  recomputed from the full ledger.
-- **Boolean features** use only the `entitlements` table. `usage_period_duration`
-  must be NULL; no rows in `grants` / `usage_events` / `balance_snapshots`.
-  Validation enforced at the application layer; can be hardened with
-  partial constraints later.
-- SQLite parity: replace `UUID` with `TEXT`, `NUMERIC` with `REAL` or
-  store as integer micro-credits, `JSONB` with `TEXT`. Keep schema
-  otherwise identical via migrations gated by driver.
+- `balance_snapshots` is purely a derived cache; if empty, balance is
+  recomputed from the full ledger via meter aggregation.
+- **Boolean features** (meter_id NULL) use only the `entitlements`
+  table. `usage_period_duration` must be NULL; no rows in `grants` /
+  `usage_events` / `balance_snapshots`. Validation enforced at the
+  application layer.
+- SQLite parity: replace `UUID` with `TEXT`, `BIGINT` with `INTEGER`,
+  `JSONB` with `TEXT`. Keep schema otherwise identical via migrations
+  gated by driver.
 
 ## 8. Balance computation
 
 Given `(entitlement, T)`:
 
-1. Determine current usage period `[period_start, period_end)`:
+1. Resolve the meter from the feature: `meter = features.meter_id → meters`.
+   Boolean features skip everything below — has_access is the row's
+   existence (and `deleted_at IS NULL`).
+2. Determine current usage period `[period_start, period_end)`:
    - If `usage_period_duration` is null → `[entitlement.created_at, +∞)`.
    - Else: align `T` against `usage_period_anchor` stepping by
      `usage_period_duration`.
-2. Load active grants: `voided_at IS NULL AND effective_at <= T AND
+3. **Aggregate usage from raw events** via the meter:
+   ```sql
+   -- For aggregation = sum:
+   SELECT COALESCE(SUM((payload->>meter.value_property)::numeric), 0)
+   FROM usage_events
+   WHERE customer    = $1
+     AND type        = meter.event_type
+     AND time        >= period_start
+     AND time        <  T;
+   -- For aggregation = count: SELECT COUNT(*) ...
+   ```
+4. Load active grants: `voided_at IS NULL AND effective_at <= T AND
    (expires_at IS NULL OR expires_at > T)`.
-3. Initial per-grant remaining = `amount`. If a snapshot exists at
+5. Initial per-grant remaining = `amount`. If a snapshot exists at
    `period_start`, seed `per_grant_state` from it.
-4. Replay usage events in `[period_start, T]` ordered by `occurred_at`,
-   deducting from grants in `(priority asc, effective_at asc)`.
-5. `balance = Σ per_grant_remaining`.
+6. Apply aggregated usage in priority order
+   `(priority asc, effective_at asc)`, deducting from each grant's
+   remaining.
+7. `balance = Σ per_grant_remaining`; `usage = aggregate result`;
+   `overage = max(0, -balance)`.
 
 For v0, recompute on every read. Add snapshots once read traffic justifies
 it — a snapshot at every period boundary bounds the replay window to one
-period of usage events.
+period of events.
 
 ## 9. Consistency & concurrency
 
@@ -502,22 +594,10 @@ no caches in v0.
 
 ## 11. Open questions
 
-1. **Credit unit precision.** Integer or fractional amounts? Most features
-   (`api_calls`) are naturally integer; `tokens`-style features are also
-   integer (1 token = 1 credit). Suggest: store `amount` as `BIGINT` and
-   require integer-valued credits; if we ever need fractional pricing,
-   scale at the feature level (define unit as `millitoken`,
-   `micro-credit`, etc).
-2. **Variable-cost actions.** A chat completion isn't priced until it
-   completes (1500 tokens vs 200 tokens). Two patterns to choose from:
-   (a) check access with a worst-case `cost` upfront, then record actual
-   usage afterwards; (b) check `has_access` for `cost=1` (any), allow,
-   then record actual. Default: (a) — check `cost = max_expected`.
-3. **Negative amounts / refunds.** Do we need to model refunds or
-   corrections in v0, or rely on compensating positive grants?
-4. **Customer namespace.** Do customers belong to a namespace/tenant, or is
-   "customer string" globally unique to the deployment?
-5. **Subscriptions: v1+ scope, deferred from v0.** Long-term goal is a
+1. **Hot-path latency target?** Drives whether we need `balance_snapshots`
+   from day one. v0 default: recompute on every read, add snapshots once
+   read traffic justifies. Pick a target before tuning.
+2. **Subscriptions: v1+ scope, deferred from v0.** Long-term goal is a
    first-class `Plan` + `Subscription` concept in Metery, with sync
    adapters to Stripe (and others). v0 stays at the primitive level —
    manual grants only. The integrated app or Stripe webhook code drives
@@ -525,11 +605,23 @@ no caches in v0.
    own subscription state directly, or does it stay in Stripe with
    Metery as a downstream materialized view? Likely the latter, but
    we'll decide when we get there.
-6. ~~**Boolean / static entitlements.**~~ **Resolved.** Boolean is in v0
-   (`type` column on `features`). Static is deferred to v1+ (see §3
-   Non-goals).
-7. **Hot-path latency target?** Drives whether we need balance snapshots
-   from day one.
+
+### Resolved (recorded for context)
+
+- **Credit unit precision.** Store amounts as `BIGINT`; integer-valued
+  credits only. If fractional pricing is ever needed, scale at the
+  feature level (`millitokens`, `micro-credits`, etc.) — not in the
+  ledger.
+- **Variable-cost actions.** Check `cost = max_expected` upfront, record
+  actual after the operation. Pattern (a).
+- **Refunds / corrections.** v0 supports positive grants only.
+  Compensating positive grants cover the limited cases we have. First-
+  class negative-amount events deferred to v1+ (see roadmap).
+- **Customer namespace.** v0 is single-tenant — `Customer.key` is
+  globally unique within the deployment. Multi-tenant deferred to v1+.
+- **Boolean / static entitlements.** Boolean is in v0; `meter_slug`
+  empty on Feature is the discriminator (no `type` field). Static
+  entitlements deferred to v1+.
 
 ## 12. Roadmap & implementation plan
 

@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+// Customers are the billable / addressable entities. Created first;
+// referenced by `key` from entitlements / grants / events. `id` is a
+// server-generated UUID v7 — internal stable handle exposed for
+// billing-system mapping (e.g., Stripe sync).
+//
+// Direct customer endpoints accept either form via `id_or_key`:
+// the server format-detects UUIDs and routes accordingly, falling
+// back to key lookup if the UUID-form lookup misses (handles the
+// rare case where a caller's key happens to be UUID-formatted).
+//
+// Sub-resource paths (entitlements, grants) accept `customer_id_or_key`
+// with the same flex — UUID or key. Meter and Feature follow the
+// equivalent `id_or_slug` pattern on their own paths.
+package metery.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
+
+message Customer {
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.uuid = true
+  ]; // server-generated UUID v7
+  string key = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.max_len = 256
+  ]; // caller-assigned, opaque, unique
+  string name = 3 [(buf.validate.field).required = true];
+  google.protobuf.Struct metadata = 4;
+  google.protobuf.Timestamp created_at = 5 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp deactivated_at = 6; // null on active customers
+}
+
+service CustomerService {
+  rpc CreateCustomer(CreateCustomerRequest) returns (CreateCustomerResponse) {
+    option (google.api.http) = {
+      post: "/v1/customers"
+      body: "*"
+      response_body: "customer"
+    };
+  }
+  rpc GetCustomer(GetCustomerRequest) returns (GetCustomerResponse) {
+    option (google.api.http) = {
+      get: "/v1/customers/{id_or_key}"
+      response_body: "customer"
+    };
+  }
+  rpc ListCustomers(ListCustomersRequest) returns (ListCustomersResponse) {
+    option (google.api.http) = {
+      get: "/v1/customers"
+      response_body: "customers"
+    };
+  }
+  // Update customer name. `key` is immutable; metadata mutations
+  // deferred to v1+.
+  rpc UpdateCustomer(UpdateCustomerRequest) returns (UpdateCustomerResponse) {
+    option (google.api.http) = {
+      patch: "/v1/customers/{id_or_key}"
+      body: "*"
+      response_body: "customer"
+    };
+  }
+  // Soft-delete: sets deactivated_at. Existing entitlements / events
+  // remain (audit trail).
+  rpc DeactivateCustomer(DeactivateCustomerRequest) returns (DeactivateCustomerResponse) {
+    option (google.api.http) = {delete: "/v1/customers/{id_or_key}"};
+  }
+}
+
+message CreateCustomerRequest {
+  string key = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string name = 2 [(buf.validate.field).required = true];
+  google.protobuf.Struct metadata = 3;
+}
+message CreateCustomerResponse {
+  Customer customer = 1 [(buf.validate.field).required = true];
+}
+
+message GetCustomerRequest {
+  // Either Customer.id (UUID) or Customer.key. Server resolves.
+  string id_or_key = 1 [(buf.validate.field).required = true];
+}
+message GetCustomerResponse {
+  Customer customer = 1 [(buf.validate.field).required = true];
+}
+
+message ListCustomersRequest {
+  bool include_deactivated = 1;
+  optional int32 limit = 2 [(buf.validate.field).int32 = {
+    gt: 0
+    lte: 1000
+  }];
+  optional string after = 3 [(buf.validate.field).string.uuid = true];
+}
+message ListCustomersResponse {
+  repeated Customer customers = 1;
+}
+
+message UpdateCustomerRequest {
+  string id_or_key = 1 [(buf.validate.field).required = true];
+  string name = 2 [(buf.validate.field).required = true];
+}
+message UpdateCustomerResponse {
+  Customer customer = 1 [(buf.validate.field).required = true];
+}
+
+message DeactivateCustomerRequest {
+  string id_or_key = 1 [(buf.validate.field).required = true];
+}
+message DeactivateCustomerResponse {}

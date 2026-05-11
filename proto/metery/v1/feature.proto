@@ -1,7 +1,16 @@
 syntax = "proto3";
 
-// Features are named capabilities. Metered features have their own
-// credit ledger; boolean features encode a yes/no entitlement.
+// Features are named billing capabilities.
+//   meter_slug non-empty ⇒ metered (server resolves slug → meter UUID,
+//                           stores Feature.meter_id; aggregates events).
+//   meter_slug empty     ⇒ boolean (entitlement existence is the bit).
+//
+// Dual-ID like Customer / Meter:
+//   id   — UUID v7, server-generated, internal stable handle.
+//   slug — caller-assigned, URL-safe, immutable, unique. What other
+//          resources reference (entitlements, grants, paths).
+//
+// Cross-references on the entity expose the **slug** (caller-friendly).
 package metery.v1;
 
 import "buf/validate/validate.proto";
@@ -10,27 +19,26 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
 
-// Allowed feature `type` values. Wire format is plain string for clean
-// JSON output; validation enforces the closed set.
-//   - "metered": has a credit ledger; supports grants and usage events.
-//   - "boolean": yes/no entitlement; no balance.
-
 message Feature {
   string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.uuid = true
+  ]; // server-generated UUID v7
+  string slug = 2 [
     (buf.validate.field).required = true,
     (buf.validate.field).string = {
       max_len: 64
       pattern: "^[a-z][a-z0-9_]*$"
     }
-  ]; // slug, e.g. "api_calls"
-  string type = 2 [
-    (buf.validate.field).required = true,
-    (buf.validate.field).string = {in: ["metered", "boolean"]}
   ];
   string name = 3 [(buf.validate.field).required = true];
-  string unit = 4; // required for metered, empty for boolean (cross-field check)
+  // Refs Meter.slug (immutable). Empty ⇒ boolean feature.
+  string meter_slug = 4 [(buf.validate.field).string = {
+    max_len: 64
+    pattern: "^[a-z][a-z0-9_]*$"
+  }];
   google.protobuf.Timestamp created_at = 5 [(buf.validate.field).required = true];
-  google.protobuf.Timestamp archived_at = 6; // null on active features
+  google.protobuf.Timestamp archived_at = 6;
 }
 
 service FeatureService {
@@ -43,39 +51,45 @@ service FeatureService {
   }
   rpc GetFeature(GetFeatureRequest) returns (GetFeatureResponse) {
     option (google.api.http) = {
-      get: "/v1/features/{id}"
+      get: "/v1/features/{id_or_slug}"
       response_body: "feature"
     };
   }
   rpc ListFeatures(ListFeaturesRequest) returns (ListFeaturesResponse) {
-    option (google.api.http) = {get: "/v1/features"};
+    option (google.api.http) = {
+      get: "/v1/features"
+      response_body: "features"
+    };
   }
   rpc ArchiveFeature(ArchiveFeatureRequest) returns (ArchiveFeatureResponse) {
-    option (google.api.http) = {delete: "/v1/features/{id}"};
+    option (google.api.http) = {delete: "/v1/features/{id_or_slug}"};
   }
 }
 
 message CreateFeatureRequest {
-  string id = 1 [
+  string slug = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string = {
       max_len: 64
       pattern: "^[a-z][a-z0-9_]*$"
     }
   ];
-  string type = 2 [
-    (buf.validate.field).required = true,
-    (buf.validate.field).string = {in: ["metered", "boolean"]}
-  ];
-  string name = 3 [(buf.validate.field).required = true];
-  string unit = 4; // required for metered; ignored for boolean
+  string name = 2 [(buf.validate.field).required = true];
+  // Empty ⇒ create boolean feature; non-empty ⇒ metered.
+  // Server resolves slug → meter UUID. Caller-friendly slug only here
+  // (no id_or_slug flex) — admin scripting CreateFeature has the slug.
+  string meter_slug = 3 [(buf.validate.field).string = {
+    max_len: 64
+    pattern: "^[a-z][a-z0-9_]*$"
+  }];
 }
 message CreateFeatureResponse {
   Feature feature = 1 [(buf.validate.field).required = true];
 }
 
 message GetFeatureRequest {
-  string id = 1 [(buf.validate.field).required = true];
+  // Either Feature.id (UUID) or Feature.slug. Server resolves.
+  string id_or_slug = 1 [(buf.validate.field).required = true];
 }
 message GetFeatureResponse {
   Feature feature = 1 [(buf.validate.field).required = true];
@@ -87,14 +101,13 @@ message ListFeaturesRequest {
     gt: 0
     lte: 1000
   }];
-  optional string cursor = 3;
+  optional string after = 3 [(buf.validate.field).string.uuid = true];
 }
 message ListFeaturesResponse {
   repeated Feature features = 1;
-  string next_cursor = 2;
 }
 
 message ArchiveFeatureRequest {
-  string id = 1 [(buf.validate.field).required = true];
+  string id_or_slug = 1 [(buf.validate.field).required = true];
 }
 message ArchiveFeatureResponse {}
