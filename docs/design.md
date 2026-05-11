@@ -385,7 +385,7 @@ adds `1500` to the customer's token usage.
 The caller-assigned `id` is **both** the event identifier and the
 idempotency key — replaying the same `id` is silently deduped at the
 unique-PK level (also `200 OK {}`). UUIDs / ULIDs are conventional, but
-any unique string ≤ 256 chars works (CloudEvents compatibility).
+any unique string ≤ 256 chars works.
 
 The `customer` field accepts either `Customer.id` (UUID) or
 `Customer.key` — server resolves and stores the key.

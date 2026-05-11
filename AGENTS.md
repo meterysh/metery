@@ -47,8 +47,7 @@ grants, raw usage events) over ConnectRPC.
   in event streams and URL paths, and the slug pattern signals
   "format this carefully."
 - **IngestEvent**, not `RecordEvent` (industry verb for usage-billing).
-- Events use **`customer`** and **`type`** field names (CloudEvents-flavored,
-  terse — within event context, no need to prefix). Other resources
+- Events use **`customer`** and **`type`** field names. Other resources
   use `customer_key` / `customer_id_or_key` and `feature_slug` /
   `feature_id_or_slug`.
 
