@@ -1,0 +1,259 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"strings"
+	"time"
+
+	"github.com/oklog/ulid/v2"
+
+	"github.com/jmoiron/sqlx"
+	_ "modernc.org/sqlite" // sqlite driver
+	"github.com/meterysh/metery/internal/ledger"
+)
+
+// Store provides persistence. We use sqlx to make mapping easier.
+type Store struct {
+	db *sqlx.DB
+}
+
+func New(db *sql.DB, driverName string) *Store {
+	return &Store{
+		db: sqlx.NewDb(db, driverName),
+	}
+}
+
+// Model structs
+type Customer struct {
+	ID            string     `db:"id"`
+	Key           string     `db:"key"`
+	Name          string     `db:"name"`
+	Metadata      *string    `db:"metadata"`
+	CreatedAt     time.Time  `db:"created_at"`
+	DeactivatedAt *time.Time `db:"deactivated_at"`
+}
+
+func (s *Store) CreateCustomer(ctx context.Context, c *Customer) error {
+	q := `INSERT INTO customers (id, key, name, metadata, created_at)
+	      VALUES (:id, :key, :name, :metadata, :created_at)`
+	_, err := s.db.NamedExecContext(ctx, q, c)
+	return err
+}
+
+func (s *Store) GetCustomer(ctx context.Context, idOrKey string) (*Customer, error) {
+	q := `SELECT * FROM customers WHERE id = ? OR key = ?`
+	var c Customer
+	err := s.db.GetContext(ctx, &c, s.db.Rebind(q), idOrKey, idOrKey)
+	return &c, err
+}
+
+func (s *Store) ListCustomers(ctx context.Context, limit int, pageToken string) ([]Customer, error) {
+	// Simple ULID cursor pagination
+	q := `SELECT * FROM customers WHERE id > ? ORDER BY id ASC LIMIT ?`
+	var cs []Customer
+	err := s.db.SelectContext(ctx, &cs, s.db.Rebind(q), pageToken, limit)
+	return cs, err
+}
+
+type Meter struct {
+	ID            string     `db:"id"`
+	Slug          string     `db:"slug"`
+	Name          string     `db:"name"`
+	Aggregation   string     `db:"aggregation"`
+	EventType     string     `db:"event_type"`
+	ValueProperty *string    `db:"value_property"`
+	CreatedAt     time.Time  `db:"created_at"`
+	ArchivedAt    *time.Time `db:"archived_at"`
+}
+
+func (s *Store) CreateMeter(ctx context.Context, m *Meter) error {
+	q := `INSERT INTO meters (id, slug, name, aggregation, event_type, value_property, created_at)
+	      VALUES (:id, :slug, :name, :aggregation, :event_type, :value_property, :created_at)`
+	_, err := s.db.NamedExecContext(ctx, q, m)
+	return err
+}
+
+func (s *Store) GetMeter(ctx context.Context, idOrSlug string) (*Meter, error) {
+	q := `SELECT * FROM meters WHERE id = ? OR slug = ?`
+	var m Meter
+	err := s.db.GetContext(ctx, &m, s.db.Rebind(q), idOrSlug, idOrSlug)
+	return &m, err
+}
+
+type Feature struct {
+	ID         string     `db:"id"`
+	Slug       string     `db:"slug"`
+	Name       string     `db:"name"`
+	MeterID    *string    `db:"meter_id"`
+	CreatedAt  time.Time  `db:"created_at"`
+	ArchivedAt *time.Time `db:"archived_at"`
+}
+
+func (s *Store) CreateFeature(ctx context.Context, f *Feature) error {
+	q := `INSERT INTO features (id, slug, name, meter_id, created_at)
+	      VALUES (:id, :slug, :name, :meter_id, :created_at)`
+	_, err := s.db.NamedExecContext(ctx, q, f)
+	return err
+}
+
+func (s *Store) GetFeature(ctx context.Context, idOrSlug string) (*Feature, error) {
+	q := `SELECT * FROM features WHERE id = ? OR slug = ?`
+	var f Feature
+	err := s.db.GetContext(ctx, &f, s.db.Rebind(q), idOrSlug, idOrSlug)
+	return &f, err
+}
+
+type EntitlementRow struct {
+	ID                  string     `db:"id"`
+	CustomerID          string     `db:"customer_id"`
+	FeatureID           string     `db:"feature_id"`
+	UsagePeriodDuration *string    `db:"usage_period_duration"`
+	UsagePeriodAnchor   *time.Time `db:"usage_period_anchor"`
+	CreatedAt           time.Time  `db:"created_at"`
+	DeletedAt           *time.Time `db:"deleted_at"`
+}
+
+func (s *Store) CreateEntitlement(ctx context.Context, e *EntitlementRow) error {
+	q := `INSERT INTO entitlements (id, customer_id, feature_id, usage_period_duration, usage_period_anchor, created_at)
+	      VALUES (:id, :customer_id, :feature_id, :usage_period_duration, :usage_period_anchor, :created_at)`
+	_, err := s.db.NamedExecContext(ctx, q, e)
+	return err
+}
+
+func (s *Store) GetEntitlement(ctx context.Context, customerID, featureID string) (*EntitlementRow, error) {
+	q := `SELECT * FROM entitlements WHERE customer_id = ? AND feature_id = ? AND deleted_at IS NULL`
+	var e EntitlementRow
+	err := s.db.GetContext(ctx, &e, s.db.Rebind(q), customerID, featureID)
+	return &e, err
+}
+
+type GrantRow struct {
+	ID                 string     `db:"id"`
+	EntitlementID      string     `db:"entitlement_id"`
+	Amount             int64      `db:"amount"`
+	Priority           int32      `db:"priority"`
+	EffectiveAt        time.Time  `db:"effective_at"`
+	ExpiresAt          *time.Time `db:"expires_at"`
+	RecurrenceInterval *string    `db:"recurrence_interval"`
+	RecurrenceAnchor   *time.Time `db:"recurrence_anchor"`
+	RolloverMax        *int64     `db:"rollover_max"`
+	RolloverType       *string    `db:"rollover_type"`
+	ParentGrantID      *string    `db:"parent_grant_id"`
+	Metadata           *string    `db:"metadata"`
+	CreatedAt          time.Time  `db:"created_at"`
+	VoidedAt           *time.Time `db:"voided_at"`
+}
+
+func (s *Store) CreateGrant(ctx context.Context, g *GrantRow) error {
+	q := `INSERT INTO grants (id, entitlement_id, amount, priority, effective_at, expires_at, recurrence_interval, recurrence_anchor, rollover_max, rollover_type, parent_grant_id, metadata, created_at)
+	      VALUES (:id, :entitlement_id, :amount, :priority, :effective_at, :expires_at, :recurrence_interval, :recurrence_anchor, :rollover_max, :rollover_type, :parent_grant_id, :metadata, :created_at)`
+	_, err := s.db.NamedExecContext(ctx, q, g)
+	return err
+}
+
+func (s *Store) ListActiveGrants(ctx context.Context, entitlementID string) ([]ledger.Grant, error) {
+	q := `SELECT * FROM grants WHERE entitlement_id = ? AND voided_at IS NULL ORDER BY priority ASC, effective_at ASC`
+	var rows []GrantRow
+	err := s.db.SelectContext(ctx, &rows, s.db.Rebind(q), entitlementID)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]ledger.Grant, len(rows))
+	for i, r := range rows {
+		rt := ""
+		if r.RolloverType != nil {
+			rt = *r.RolloverType
+		}
+		res[i] = ledger.Grant{
+			ID:           r.ID,
+			Amount:       r.Amount,
+			Priority:     r.Priority,
+			EffectiveAt:  r.EffectiveAt,
+			ExpiresAt:    r.ExpiresAt,
+			RolloverMax:  r.RolloverMax,
+			RolloverType: rt,
+		}
+	}
+	return res, nil
+}
+
+type Event struct {
+	ID          string     `db:"id"`
+	Customer    string     `db:"customer"`
+	Type        string     `db:"type"`
+	Time        time.Time  `db:"time"`
+	Payload     *string    `db:"payload"` // json text
+	CreatedAt   time.Time  `db:"created_at"`
+	ProcessedAt *time.Time `db:"processed_at"`
+}
+
+func (s *Store) IngestEvent(ctx context.Context, e *Event) error {
+	q := `INSERT INTO usage_events (id, customer, type, time, payload, created_at)
+	      VALUES (:id, :customer, :type, :time, :payload, :created_at)
+	      ON CONFLICT(id) DO NOTHING`
+	// sqlite syntax ON CONFLICT requires specific driver support, but it's standard now in recent sqlite/postgres
+	_, err := s.db.NamedExecContext(ctx, q, e)
+	return err
+}
+
+// FetchUsage aggregates usage from raw events.
+// WARNING: This implementation uses SQLite's json_extract. Postgres needs ->> operator.
+// Since v0 testing is primarily SQLite, we'll write the SQLite syntax and conditionally execute Postgres.
+func (s *Store) FetchUsage(ctx context.Context, customerKey string, m *Meter, from, to time.Time) (int64, error) {
+	var q string
+
+	if m.Aggregation == "count" {
+		q = `SELECT COALESCE(COUNT(*), 0) FROM usage_events WHERE customer = ? AND type = ? AND time >= ? AND time < ?`
+		var usage int64
+		err := s.db.GetContext(ctx, &usage, s.db.Rebind(q), customerKey, m.EventType, from, to)
+		return usage, err
+	}
+
+	if m.ValueProperty == nil {
+		return 0, nil // Invalid setup
+	}
+
+	valProp := *m.ValueProperty
+
+	// Driver-specific JSON extraction
+	if s.db.DriverName() == "sqlite" {
+		valProp = "$." + valProp
+		if m.Aggregation == "sum" {
+			q = `SELECT COALESCE(SUM(CAST(json_extract(payload, ?) AS NUMERIC)), 0) FROM usage_events WHERE customer = ? AND type = ? AND time >= ? AND time < ?`
+		}
+	} else {
+		// postgres
+		if m.Aggregation == "sum" {
+			// jsonb extraction. Since we need path, it's more complex. Assumes valProp is just the key for now.
+			// e.g. $.tokens -> let's assume it's just 'tokens' for postgres simpleness in this scaffold.
+			q = `SELECT COALESCE(SUM(CAST(payload->>? AS NUMERIC)), 0) FROM usage_events WHERE customer = ? AND type = ? AND time >= ? AND time < ?`
+		}
+	}
+
+	var usage float64 // Use float64 to safely cast SQL numeric then convert to int64
+	err := s.db.GetContext(ctx, &usage, s.db.Rebind(q), valProp, customerKey, m.EventType, from, to)
+	return int64(usage), err
+}
+
+func NewULID() string {
+	return strings.ToLower(ulid.Make().String())
+}
+
+func (s *Store) ListRecurringGrants(ctx context.Context) ([]GrantRow, error) {
+	q := "SELECT * FROM grants WHERE recurrence_interval IS NOT NULL AND voided_at IS NULL AND parent_grant_id IS NULL"
+	var rows []GrantRow
+	err := s.db.SelectContext(ctx, &rows, q)
+	return rows, err
+}
+
+func (s *Store) GetLatestChildGrant(ctx context.Context, parentID string) (*GrantRow, error) {
+	q := "SELECT * FROM grants WHERE parent_grant_id = ? ORDER BY effective_at DESC LIMIT 1"
+	var row GrantRow
+	err := s.db.GetContext(ctx, &row, s.db.Rebind(q), parentID)
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
