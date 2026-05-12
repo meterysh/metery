@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+// Usage events: append-only raw observations. Aggregated server-side
+// via the meter associated with each metered feature.
+package metery.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
+
+message UsageEvent {
+  // Caller-assigned event identifier. Doubles as the idempotency key —
+  // a unique-PK on this column dedupes replays. Any string up to
+  // 256 chars; UUIDs / ULIDs are conventional but not required
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.max_len = 256
+  ];
+  // The customer this event is about. Stored as Customer.key
+  // (caller's identifier). On ingest, accepts either Customer.id
+  // or Customer.key — server resolves and stores the key.
+  string customer = 2 [(buf.validate.field).required = true];
+  // Event type. Matches Meter.event_type for aggregation.
+  string type = 3 [(buf.validate.field).required = true];
+  // Caller-provided on ingest, optional — server fills in ingest time when absent.
+  google.protobuf.Timestamp time = 4 [(buf.validate.field).required = true];
+  // Free-form payload. Meter `value_property`
+  // extracts a value from here for sum/avg/min/max/unique_count aggregations.
+  google.protobuf.Struct payload = 5;
+}
+
+service EventService {
+  // Ingest a single usage event. Idempotent on `id`.
+  // A future IngestEventBatch can be added without breaking this.
+  rpc IngestEvent(IngestEventRequest) returns (IngestEventResponse) {
+    option (google.api.http) = {
+      post: "/v1/events"
+      body: "*"
+    };
+  }
+}
+
+message IngestEventRequest {
+  // Caller-assigned event identifier; also the idempotency key.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.max_len = 256
+  ];
+  // Customer.id or Customer.key — server resolves.
+  string customer = 2 [(buf.validate.field).required = true];
+  string type = 3 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp time = 4;
+  google.protobuf.Struct payload = 5;
+}
+message IngestEventResponse {}

@@ -1,0 +1,153 @@
+syntax = "proto3";
+
+// Entitlements bind a customer to a feature. For metered features they
+// carry usage-period config; for boolean features the row's existence
+// is the access bit.
+//
+// Cross-references on the entity use caller-friendly identifiers —
+// Customer.key and Feature.slug. Requests and paths accept the flexible
+// `customer_id_or_key` and `feature_id_or_slug` forms — server resolves.
+package metery.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "metery/v1/common.proto";
+
+option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
+
+message Entitlement {
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"
+  ];
+  // Customer.key — FK reference, immutable.
+  string customer_key = 2 [(buf.validate.field).required = true];
+  // Feature.slug — FK reference, immutable.
+  string feature_slug = 3 [(buf.validate.field).required = true];
+  Period usage_period = 4; // optional; metered features only
+  google.protobuf.Timestamp created_at = 5 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp deleted_at = 6; // null on active entitlements
+}
+
+// Value response. Caller discriminates on field presence:
+//   - boolean entitlements: only `has_access` is populated.
+//   - metered entitlements: `has_access` + `balance` / `usage` /
+//     `overage` / `usage_period` / `last_reset` are all populated.
+message EntitlementValue {
+  // True when access should be allowed for the requested cost (or any
+  // access at all for boolean / cost-omitted metered reads).
+  bool has_access = 1 [(buf.validate.field).required = true];
+  // Remaining credits in the current period. May be negative under
+  // concurrent overspend (v0 — see design §9). Metered only.
+  optional int64 balance = 2;
+  // Credits consumed in the current period (after the last reset).
+  // Metered only.
+  optional int64 usage = 3;
+  // Excess consumption beyond granted credits: max(0, -balance).
+  // Metered only.
+  optional int64 overage = 4;
+  // Period boundaries currently in effect. Empty for entitlements with
+  // no usage_period.
+  TimeWindow usage_period = 5;
+  // When the usage counter last started fresh — either via period
+  // rollover or an explicit ResetEntitlement call. Metered only.
+  google.protobuf.Timestamp last_reset = 6;
+}
+
+service EntitlementService {
+  rpc CreateEntitlement(CreateEntitlementRequest) returns (CreateEntitlementResponse) {
+    option (google.api.http) = {
+      post: "/v1/customers/{customer_id_or_key}/entitlements"
+      body: "*"
+      response_body: "entitlement"
+    };
+  }
+  rpc GetEntitlement(GetEntitlementRequest) returns (GetEntitlementResponse) {
+    option (google.api.http) = {
+      get: "/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}"
+      response_body: "entitlement"
+    };
+  }
+  rpc ListEntitlements(ListEntitlementsRequest) returns (ListEntitlementsResponse) {
+    option (google.api.http) = {
+      get: "/v1/customers/{customer_id_or_key}/entitlements"
+      response_body: "entitlements"
+    };
+  }
+  rpc DeleteEntitlement(DeleteEntitlementRequest) returns (DeleteEntitlementResponse) {
+    option (google.api.http) = {delete: "/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}"};
+  }
+
+  // Hot-path read: "can customer do this, and what's their balance?"
+  rpc GetEntitlementValue(GetEntitlementValueRequest) returns (GetEntitlementValueResponse) {
+    option (google.api.http) = {
+      get: "/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}/value"
+      response_body: "value"
+    };
+  }
+
+  // Manual reset of usage counters (admin/upgrade flow). Metered only.
+  // Returns empty on success — caller refetches GetEntitlementValue if
+  // they want post-reset state.
+  rpc ResetEntitlement(ResetEntitlementRequest) returns (ResetEntitlementResponse) {
+    option (google.api.http) = {
+      post: "/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}/reset"
+      body: "*"
+    };
+  }
+}
+
+message CreateEntitlementRequest {
+  string customer_id_or_key = 1 [(buf.validate.field).required = true];
+  string feature_id_or_slug = 2 [(buf.validate.field).required = true];
+  Period usage_period = 3; // optional; metered features only
+}
+message CreateEntitlementResponse {
+  Entitlement entitlement = 1 [(buf.validate.field).required = true];
+}
+
+message GetEntitlementRequest {
+  string customer_id_or_key = 1 [(buf.validate.field).required = true];
+  string feature_id_or_slug = 2 [(buf.validate.field).required = true];
+}
+message GetEntitlementResponse {
+  Entitlement entitlement = 1 [(buf.validate.field).required = true];
+}
+
+message ListEntitlementsRequest {
+  string customer_id_or_key = 1 [(buf.validate.field).required = true];
+  optional int32 limit = 2 [(buf.validate.field).int32 = {
+    gt: 0
+    lte: 1000
+  }];
+  optional string after = 3 [(buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"];
+}
+message ListEntitlementsResponse {
+  repeated Entitlement entitlements = 1;
+}
+
+message DeleteEntitlementRequest {
+  string customer_id_or_key = 1 [(buf.validate.field).required = true];
+  string feature_id_or_slug = 2 [(buf.validate.field).required = true];
+}
+message DeleteEntitlementResponse {}
+
+message GetEntitlementValueRequest {
+  string customer_id_or_key = 1 [(buf.validate.field).required = true];
+  string feature_id_or_slug = 2 [(buf.validate.field).required = true];
+  // For metered: the cost being checked. Defaults to 1 if absent. Ignored for boolean.
+  optional int64 cost = 3 [(buf.validate.field).int64.gte = 0];
+  // Optional point-in-time read; defaults to now.
+  google.protobuf.Timestamp at = 4;
+}
+message GetEntitlementValueResponse {
+  EntitlementValue value = 1 [(buf.validate.field).required = true];
+}
+
+message ResetEntitlementRequest {
+  string customer_id_or_key = 1 [(buf.validate.field).required = true];
+  string feature_id_or_slug = 2 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp at = 3; // optional
+}
+message ResetEntitlementResponse {}
