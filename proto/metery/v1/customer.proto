@@ -2,17 +2,18 @@ syntax = "proto3";
 
 // Customers are the billable / addressable entities. Created first;
 // referenced by `key` from entitlements / grants / events. `id` is a
-// server-generated UUID v7 — internal stable handle exposed for
-// billing-system mapping (e.g., Stripe sync).
+// server-generated ULID (lowercase Crockford base32) — internal stable
+// handle exposed for billing-system mapping (e.g., Stripe sync).
 //
 // Direct customer endpoints accept either form via `id_or_key`:
-// the server format-detects UUIDs and routes accordingly, falling
-// back to key lookup if the UUID-form lookup misses (handles the
-// rare case where a caller's key happens to be UUID-formatted).
+// the server format-detects ULIDs (26 chars, Crockford alphabet) and
+// routes accordingly, falling back to key lookup otherwise. Caller-
+// assigned keys that would parse as a valid ULID are rejected at
+// create time to keep the namespace unambiguous.
 //
 // Sub-resource paths (entitlements, grants) accept `customer_id_or_key`
-// with the same flex — UUID or key. Meter and Feature follow the
-// equivalent `id_or_slug` pattern on their own paths.
+// with the same flex. Meter and Feature follow the equivalent
+// `id_or_slug` pattern on their own paths.
 package metery.v1;
 
 import "buf/validate/validate.proto";
@@ -25,8 +26,8 @@ option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
 message Customer {
   string id = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string.uuid = true
-  ]; // server-generated UUID v7
+    (buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"
+  ]; // server-generated ULID
   string key = 2 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.max_len = 256
@@ -86,7 +87,7 @@ message CreateCustomerResponse {
 }
 
 message GetCustomerRequest {
-  // Either Customer.id (UUID) or Customer.key. Server resolves.
+  // Either Customer.id (ULID) or Customer.key. Server resolves.
   string id_or_key = 1 [(buf.validate.field).required = true];
 }
 message GetCustomerResponse {
@@ -99,7 +100,7 @@ message ListCustomersRequest {
     gt: 0
     lte: 1000
   }];
-  optional string after = 3 [(buf.validate.field).string.uuid = true];
+  optional string after = 3 [(buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"];
 }
 message ListCustomersResponse {
   repeated Customer customers = 1;

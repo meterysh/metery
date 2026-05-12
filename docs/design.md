@@ -33,9 +33,9 @@ and/or period resets.
 
 - **Customers** are first-class — caller creates them before granting
   entitlements or ingesting events. Dual ID: server-generated `id`
-  (UUID v7) for our stable internal handle; caller-assigned `key`
-  (opaque) for natural references. Matches the OpenMeter / Lago / Orb
-  / Stripe convention.
+  (ULID, lowercase Crockford base32) for our stable internal handle;
+  caller-assigned `key` (opaque) for natural references. Matches the
+  OpenMeter / Lago / Orb / Stripe convention.
 - **Meters** define server-side aggregation from raw events:
   `aggregation` (`count` / `sum` / `avg` / `min` / `max` / `unique_count`),
   `event_type` filter, optional `value_property` JSON path.
@@ -73,7 +73,10 @@ and/or period resets.
 - Real-time streaming aggregation (no Kafka / ClickHouse). Postgres only.
 - Pricing / invoicing.
 - Multi-tenant (single tenant assumed; can be added as a column later).
-- Auth / authz of the management API.
+- Key management API (CreateApiKey / ListApiKeys / RevokeApiKey) +
+  scopes / RBAC + rate limiting. v0 ships basic bearer-token auth
+  (env-provisioned keys); management API and finer access controls
+  land in v1+.
 - Webhooks / outbound notifications.
 - Historical re-pricing or backfill from raw event streams.
 
@@ -87,7 +90,7 @@ metric value. Boolean features are pure yes/no access checks.
 
 | Concept         | What it is                                                      |
 |-----------------|-----------------------------------------------------------------|
-| **Customer**    | First-class billable entity. Server-generated `id` (UUID v7) + caller-assigned `key` (opaque, unique). What other resources reference. |
+| **Customer**    | First-class billable entity. Server-generated `id` (ULID, lowercase Crockford) + caller-assigned `key` (opaque, unique). What other resources reference. |
 | **Meter**       | Server-side aggregation definition: `aggregation` (count/sum/…), `event_type` filter, `value_property` JSON path. Multiple features can wrap one meter. |
 | **Feature**     | Billing capability. `meter_slug` set ⇒ metered (uses meter for usage); empty ⇒ boolean (entitlement existence is the access bit). |
 | **Entitlement** | A `(customer, feature)` access record. For metered features, also carries usage-period config. |
@@ -230,7 +233,7 @@ POST /v1/meters
 # 3. Define the feature backed by that meter (once, admin)
 POST /v1/features
 { "slug": "api_calls", "name": "API calls", "meter_slug": "api_calls" }
-# server resolves slug → meter UUID for the DB FK (wire exposes meter_slug)
+# server resolves slug → meter id for the DB FK (wire exposes meter_slug)
 
 # 4. Provision an entitlement for the customer (once)
 POST /v1/customers/user_123/entitlements
@@ -290,13 +293,13 @@ POST /v1/meters
   "event_type":     "llm_call",
   "value_property": "$.tokens"
 }
-→ { "id": "<uuid>", "slug": "tokens", ... }
+→ { "id": "<ulid>", "slug": "tokens", ... }
 ```
 
 Feature (billing wrapper):
 
 ```
-# Metered — backed by a meter (caller passes slug; server resolves to UUID)
+# Metered — backed by a meter (caller passes slug; server resolves to id)
 POST /v1/features
 { "slug": "tokens", "name": "Tokens", "meter_slug": "tokens" }
 
@@ -387,7 +390,7 @@ idempotency key — replaying the same `id` is silently deduped at the
 unique-PK level (also `200 OK {}`). UUIDs / ULIDs are conventional, but
 any unique string ≤ 256 chars works.
 
-The `customer` field accepts either `Customer.id` (UUID) or
+The `customer` field accepts either `Customer.id` (ULID) or
 `Customer.key` — server resolves and stores the key.
 
 Server-side metrics track dedupe rate; if a caller needs visibility
@@ -412,17 +415,62 @@ message (`200 OK {}` for REST; empty proto message for Connect/gRPC).
 Use the matching `Get*` / `Value` endpoint to read state afterwards.
 
 `Create*` is the only mutation that returns a body — the new resource —
-because the server-assigned UUID isn't recoverable otherwise.
+because the server-assigned ULID isn't recoverable otherwise.
 
 > Why 200 + `{}` not 204: keeps the REST and Connect surfaces shape-
 > identical, lets clients call `response.json()` unconditionally, and
 > matches the default transcoder behavior for empty messages.
 
+### 6.7 Authentication
+
+Every Metery endpoint (REST and Connect/gRPC) requires a bearer token
+in the standard `Authorization` header:
+
+```
+Authorization: Bearer mtr_<random-32+-bytes-base64url>
+```
+
+**v0 model — env-provisioned keys.** Keys are configured at boot via
+the `API_KEYS` env var, a comma-separated list of accepted
+tokens:
+
+```
+API_KEYS=mtr_AbCdEf...,mtr_GhIjKl...
+```
+
+The server compares the incoming token (constant-time) against the
+configured set. No DB lookup, no per-key audit trail, no scopes.
+Every valid key has full admin access — appropriate for the v0
+single-tenant assumption.
+
+**Token shape.** `mtr_` prefix (so they're spottable in logs and
+configs) plus a random 32+ byte suffix encoded as URL-safe base64. The
+prefix is convention only; the server treats keys as opaque strings.
+
+**Failure modes.**
+- Missing `Authorization` header → `UNAUTHENTICATED` (HTTP 401).
+- Invalid / unknown token → `UNAUTHENTICATED`. We deliberately do
+  *not* distinguish "missing" from "invalid" to avoid token-existence
+  enumeration.
+
+**Implementation.** Auth runs as Connect/HTTP middleware before any
+handler. Failures short-circuit with the standard error envelope;
+successful auth threads no per-request identity into handlers in v0
+(every valid call is full-admin).
+
+**Forward path (v1).** DB-backed `api_keys` table (hashed storage,
+named keys, revocation), plus a management API. v0 env keys migrate
+over with a one-shot import. Scopes / RBAC / per-key rate limiting
+are v1+. See [roadmap.md](roadmap.md).
+
 ## 7. Data model (Postgres)
 
 ```sql
+-- IDs are 26-char lowercase ULIDs stored as TEXT — readable in psql /
+-- dumps / logs at a ~10-byte-per-row cost vs binary. Migrate to bytea
+-- later if storage pressure justifies.
 CREATE TABLE customers (
-  id              UUID PRIMARY KEY,                     -- server-generated v7
+  id              TEXT PRIMARY KEY,                     -- server-generated ULID
   key             TEXT NOT NULL UNIQUE,                 -- caller-assigned, immutable
   name            TEXT NOT NULL,
   metadata        JSONB,
@@ -431,7 +479,7 @@ CREATE TABLE customers (
 );
 
 CREATE TABLE meters (
-  id              UUID PRIMARY KEY,                     -- server-generated v7
+  id              TEXT PRIMARY KEY,                     -- server-generated ULID
   slug            TEXT NOT NULL UNIQUE,                 -- caller-assigned, immutable
   name            TEXT NOT NULL,
   aggregation     TEXT NOT NULL CHECK (aggregation IN
@@ -444,18 +492,18 @@ CREATE TABLE meters (
 CREATE INDEX meters_by_event_type ON meters (event_type) WHERE archived_at IS NULL;
 
 CREATE TABLE features (
-  id              UUID PRIMARY KEY,                     -- server-generated v7
+  id              TEXT PRIMARY KEY,                     -- server-generated ULID
   slug            TEXT NOT NULL UNIQUE,                 -- caller-assigned, immutable
   name            TEXT NOT NULL,
-  meter_id        UUID REFERENCES meters(id),           -- NULL ⇒ boolean feature
+  meter_id        TEXT REFERENCES meters(id),           -- NULL ⇒ boolean feature
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   archived_at     TIMESTAMPTZ
 );
 
 CREATE TABLE entitlements (
-  id                       UUID PRIMARY KEY,
-  customer_id              UUID NOT NULL REFERENCES customers(id),
-  feature_id               UUID NOT NULL REFERENCES features(id),
+  id                       TEXT PRIMARY KEY,
+  customer_id              TEXT NOT NULL REFERENCES customers(id),
+  feature_id               TEXT NOT NULL REFERENCES features(id),
   usage_period_duration    TEXT,                        -- "P1M"; NULL = no reset
   usage_period_anchor      TIMESTAMPTZ,
   created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -465,8 +513,8 @@ CREATE UNIQUE INDEX entitlements_active_uniq
   ON entitlements (customer_id, feature_id) WHERE deleted_at IS NULL;
 
 CREATE TABLE grants (
-  id                  UUID PRIMARY KEY,
-  entitlement_id      UUID NOT NULL REFERENCES entitlements(id),
+  id                  TEXT PRIMARY KEY,
+  entitlement_id      TEXT NOT NULL REFERENCES entitlements(id),
   amount              BIGINT NOT NULL CHECK (amount > 0),
   priority            INT    NOT NULL DEFAULT 100,
   effective_at        TIMESTAMPTZ NOT NULL,
@@ -475,7 +523,7 @@ CREATE TABLE grants (
   recurrence_anchor   TIMESTAMPTZ,
   rollover_max        BIGINT,                           -- NULL = no rollover
   rollover_type       TEXT,                             -- 'original' | 'remaining'
-  parent_grant_id     UUID REFERENCES grants(id),       -- recurring chain
+  parent_grant_id     TEXT REFERENCES grants(id),       -- recurring chain
   metadata            JSONB,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   voided_at           TIMESTAMPTZ                       -- soft-void
@@ -500,7 +548,7 @@ CREATE INDEX usage_events_lookup
 
 -- Optional cache; rebuildable from the ledger.
 CREATE TABLE balance_snapshots (
-  entitlement_id  UUID NOT NULL REFERENCES entitlements(id),
+  entitlement_id  TEXT NOT NULL REFERENCES entitlements(id),
   as_of           TIMESTAMPTZ NOT NULL,                 -- typically a period boundary
   balance         BIGINT NOT NULL,
   per_grant_state JSONB NOT NULL,                       -- [{grant_id, remaining}, ...]
@@ -519,9 +567,9 @@ CREATE TABLE balance_snapshots (
   table. `usage_period_duration` must be NULL; no rows in `grants` /
   `usage_events` / `balance_snapshots`. Validation enforced at the
   application layer.
-- SQLite parity: replace `UUID` with `TEXT`, `BIGINT` with `INTEGER`,
-  `JSONB` with `TEXT`. Keep schema otherwise identical via migrations
-  gated by driver.
+- SQLite parity: ULID IDs are already `TEXT`, so no conversion needed
+  there. Swap `BIGINT` for `INTEGER` and `JSONB` for `TEXT`. Keep schema
+  otherwise identical via migrations gated by driver.
 
 ## 8. Balance computation
 

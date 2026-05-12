@@ -12,9 +12,9 @@ the ledger or breaking existing API contracts. Anchored to
 
 - Customers, meters, features (metered + boolean), entitlements,
   grants, raw usage events.
-- Dual-ID for the named resources — server-generated UUID v7 `id` +
-  caller-assigned identifier (`Customer.key`, `Meter.slug`,
-  `Feature.slug`).
+- Dual-ID for the named resources — server-generated ULID `id`
+  (lowercase Crockford, stored as TEXT) + caller-assigned identifier
+  (`Customer.key`, `Meter.slug`, `Feature.slug`).
 - Terse event envelope: `id`, `customer`, `type`, `time`, `payload`.
 - **Manual grants only** — caller decides when to add credits.
 - Hot path: `has_access`, `balance`, `ingest_event`.
@@ -22,7 +22,9 @@ the ledger or breaking existing API contracts. Anchored to
   (`meter_slug` empty on Feature is the discriminator).
 - Periodic reset (computed on read) + recurring grants (in-process worker).
 - Idempotent event ingestion (PK on caller-assigned `id`).
-- Keyset pagination by UUID v7 across all `List*` endpoints.
+- Keyset pagination by ULID `id` across all `List*` endpoints.
+- Bearer-token authentication, keys env-provisioned via `API_KEYS`.
+  Every valid token = full admin (single-tenant).
 - Go service, Postgres / SQLite.
 
 **Out (deferred):**
@@ -33,6 +35,7 @@ the ledger or breaking existing API contracts. Anchored to
 - Atomic check-and-deduct.
 - Multi-tenant.
 - Webhooks, real-time analytics.
+- Key management API + DB-backed keys + scopes / RBAC + rate limiting.
 
 ### Implementation plan
 
@@ -47,6 +50,10 @@ the ledger or breaking existing API contracts. Anchored to
 
 Adds, on top of v0:
 
+- **API key management** — `api_keys` table (hashed storage, named,
+  revocable), `CreateApiKey` / `ListApiKeys` / `RevokeApiKey` RPCs.
+  v0 env keys import as a one-shot migration. Still admin-only auth;
+  scopes deferred to v1+.
 - **`Plan`** entity — a template binding features → grant configurations
   (amounts, recurrence, expiration, rollover).
 - **`Subscription`** entity — links customer → plan with start/end dates;
@@ -76,6 +83,8 @@ Unordered, scope per-feature:
 - **Atomic check-and-deduct** for race-free spending under concurrent
   load (row-locked counter or `SELECT ... FOR UPDATE`).
 - **Multi-tenant** deployment — namespace column on every row.
+- **API key scopes / RBAC** — read-only vs admin keys, per-resource
+  scopes, per-key rate limiting.
 - **Outbound webhooks** — low-balance, exhausted, period-rollover events.
 - **Adapters beyond Stripe** — Lago, Orb, Paddle, custom billing.
 - **Historical analytics** — usage reports, retention, cohort views.

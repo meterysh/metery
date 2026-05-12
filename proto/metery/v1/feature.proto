@@ -1,12 +1,12 @@
 syntax = "proto3";
 
 // Features are named billing capabilities.
-//   meter_slug non-empty ⇒ metered (server resolves slug → meter UUID,
+//   meter_slug non-empty ⇒ metered (server resolves slug → meter id,
 //                           stores Feature.meter_id; aggregates events).
 //   meter_slug empty     ⇒ boolean (entitlement existence is the bit).
 //
 // Dual-ID like Customer / Meter:
-//   id   — UUID v7, server-generated, internal stable handle.
+//   id   — ULID (lowercase Crockford base32), server-generated.
 //   slug — caller-assigned, URL-safe, immutable, unique. What other
 //          resources reference (entitlements, grants, paths).
 //
@@ -22,8 +22,8 @@ option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
 message Feature {
   string id = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string.uuid = true
-  ]; // server-generated UUID v7
+    (buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"
+  ]; // server-generated ULID
   string slug = 2 [
     (buf.validate.field).required = true,
     (buf.validate.field).string = {
@@ -76,7 +76,7 @@ message CreateFeatureRequest {
   ];
   string name = 2 [(buf.validate.field).required = true];
   // Empty ⇒ create boolean feature; non-empty ⇒ metered.
-  // Server resolves slug → meter UUID. Caller-friendly slug only here
+  // Server resolves slug → meter id. Caller-friendly slug only here
   // (no id_or_slug flex) — admin scripting CreateFeature has the slug.
   string meter_slug = 3 [(buf.validate.field).string = {
     max_len: 64
@@ -88,7 +88,7 @@ message CreateFeatureResponse {
 }
 
 message GetFeatureRequest {
-  // Either Feature.id (UUID) or Feature.slug. Server resolves.
+  // Either Feature.id (ULID) or Feature.slug. Server resolves.
   string id_or_slug = 1 [(buf.validate.field).required = true];
 }
 message GetFeatureResponse {
@@ -101,7 +101,7 @@ message ListFeaturesRequest {
     gt: 0
     lte: 1000
   }];
-  optional string after = 3 [(buf.validate.field).string.uuid = true];
+  optional string after = 3 [(buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"];
 }
 message ListFeaturesResponse {
   repeated Feature features = 1;

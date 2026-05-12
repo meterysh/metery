@@ -20,7 +20,7 @@ message UsageEvent {
     (buf.validate.field).string.max_len = 256
   ];
   // The customer this event is about. Stored as Customer.key
-  // (caller's identifier). On ingest, accepts either Customer.id (UUID)
+  // (caller's identifier). On ingest, accepts either Customer.id
   // or Customer.key — server resolves and stores the key.
   string customer = 2 [(buf.validate.field).required = true];
   // Event type. Matches Meter.event_type for aggregation.
@@ -49,7 +49,7 @@ message IngestEventRequest {
     (buf.validate.field).required = true,
     (buf.validate.field).string.max_len = 256
   ];
-  // Customer.id (UUID) or Customer.key — server resolves.
+  // Customer.id or Customer.key — server resolves.
   string customer = 2 [(buf.validate.field).required = true];
   string type = 3 [(buf.validate.field).required = true];
   google.protobuf.Timestamp time = 4;

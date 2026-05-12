@@ -13,15 +13,15 @@ grants, raw usage events) over ConnectRPC.
 ## Core concepts
 
 - **Customer** — billable / addressable entity. Dual ID:
-  server-generated `id` (UUID v7) for stable internal handle;
+  server-generated `id` (ULID) for stable internal handle;
   caller-assigned `key` (opaque, unique) for natural references.
   Created first; everything else references customers.
 - **Meter** — server-side aggregation definition: `aggregation`
   (`count` / `sum` / `avg` / `min` / `max` / `unique_count`),
   `event_type` filter, optional `value_property` JSON path. Dual ID:
-  server `id` (UUID v7) + caller-assigned `slug` (URL-safe).
+  server `id` (ULID) + caller-assigned `slug` (URL-safe).
   Multiple features can share one meter.
-- **Feature** — billing capability. Dual ID: server `id` (UUID v7) +
+- **Feature** — billing capability. Dual ID: server `id` (ULID) +
   caller-assigned `slug`. `meter_slug` set ⇒ metered (uses meter for
   usage); `meter_slug` empty ⇒ boolean (entitlement existence is the
   access bit). No `type` field — `meter_slug` presence is the
@@ -37,9 +37,10 @@ grants, raw usage events) over ConnectRPC.
 
 - **Customer**, not "user" / "subject" / "account". The acting, entitled,
   billable entity.
-- **Customer.id** is UUID v7 (our handle); **Customer.key** is the
-  caller's identifier — opaque, no format constraint (could be UUID,
-  email, anything up to 256 chars).
+- **Customer.id** is a ULID (our handle); **Customer.key** is the
+  caller's identifier — opaque, max 256 chars, but **cannot itself
+  parse as a ULID** (rejected at create time to keep the namespace
+  unambiguous).
 - **Meter.slug** / **Feature.slug** is the caller-assigned identifier
   for those resources — URL-safe, format-constrained
   (`^[a-z][a-z0-9_]*$`, max 64 chars). `slug` (not `key`) because the
@@ -53,16 +54,17 @@ grants, raw usage events) over ConnectRPC.
 
 ## Resource ID convention
 
-All three "named" resources are dual-ID — server-generated UUID `id`
+All three "named" resources are dual-ID — server-generated ULID `id`
 plus a caller-friendly identifier (`key` for Customer; `slug` for
 Meter / Feature). Direct-op paths and sub-resource paths accept the
-flexible `id_or_key` / `id_or_slug` form (server format-detects UUID).
+flexible `id_or_key` / `id_or_slug` form (server format-detects ULID:
+26 chars, Crockford lowercase alphabet).
 
 | Resource | Server `id` | Caller's | Direct ops URL | Direct-op request field |
 |---|---|---|---|---|
-| Customer | UUID v7 | `key` | `/v1/customers/{id_or_key}` | `id_or_key` |
-| Meter | UUID v7 | `slug` | `/v1/meters/{id_or_slug}` | `id_or_slug` |
-| Feature | UUID v7 | `slug` | `/v1/features/{id_or_slug}` | `id_or_slug` |
+| Customer | ULID | `key` | `/v1/customers/{id_or_key}` | `id_or_key` |
+| Meter | ULID | `slug` | `/v1/meters/{id_or_slug}` | `id_or_slug` |
+| Feature | ULID | `slug` | `/v1/features/{id_or_slug}` | `id_or_slug` |
 
 Sub-resource paths use `customer_id_or_key` and `feature_id_or_slug`.
 
@@ -73,8 +75,8 @@ on a setup-time write.
 
 ## Cross-reference convention
 
-**Entities expose the caller-friendly identifier only — never the UUID
-FK.** UUIDs live on the resource itself (Customer / Meter / Feature
+**Entities expose the caller-friendly identifier only — never the
+ULID FK.** ULIDs live on the resource itself (Customer / Meter / Feature
 each carry their own `id`). When entity A references entity B, A
 carries B's `key` (Customer) or B's `slug` (Meter / Feature), both
 immutable.
@@ -86,7 +88,7 @@ immutable.
 | Entitlement → Feature | `feature_slug` |
 | UsageEvent → Customer | `customer` (terse) |
 
-If a caller needs a referenced resource's UUID, they `Get*` it by
+If a caller needs a referenced resource's ULID, they `Get*` it by
 key/slug. DB-level FK strategy is an implementation detail (decided
 at migration time).
 
@@ -96,16 +98,18 @@ For customer references in sub-resource paths, we accept either form:
 
 | Where | Field name | Accepts |
 |---|---|---|
-| Sub-resource paths | `customer_id_or_key` | UUID **or** key |
-| Event entity / IngestEvent | `customer` (terse) | UUID **or** key on ingest; stored as key |
+| Sub-resource paths | `customer_id_or_key` | ULID **or** key |
+| Event entity / IngestEvent | `customer` (terse) | ULID **or** key on ingest; stored as key |
 
-Server format-detects UUID inputs and routes accordingly, falling back
-to key lookup if UUID-form lookup misses (handles UUID-formatted keys).
+Server format-detects ULID inputs (26 chars, Crockford lowercase) and
+routes accordingly. No fallback dance needed — caller-assigned keys
+that would parse as ULIDs are rejected at create time, so detection
+is unambiguous.
 
 ## Caller-friendly references on create
 
-When a request references another resource by its server-generated UUID,
-**accept the caller-friendly identifier and resolve to the UUID
+When a request references another resource by its server-generated ID,
+**accept the caller-friendly identifier and resolve to the ULID
 server-side**. Examples:
 
 - `CreateFeatureRequest.meter_slug` (slug only) — server looks up Meter
@@ -127,12 +131,14 @@ server-side**. Examples:
   - `required = true` for presence — do **not** use `string.min_len = 1`.
   - `string = {in: [...]}` for closed-set discriminators. We deliberately
     chose strings + `in` over proto enums for clean JSON output.
-  - `string.uuid = true` for UUID fields.
-  - **Always pair `uuid` / `in` / `pattern` with `required = true` on
-    proto3 scalar fields.** Protovalidate honors implicit field presence:
-    rules like `uuid` and `in` are *skipped* when the value is the
-    default (`""`/`0`). Without `required`, an empty string silently
-    passes UUID and `in` checks.
+  - ULID fields use `string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"`
+    (26 chars, lowercase Crockford base32 alphabet — skips i/l/o/u).
+    No built-in protovalidate `ulid` rule; pattern does the job.
+  - **Always pair `in` / `pattern` with `required = true` on
+    proto3 scalar fields.** Protovalidate honors implicit field
+    presence: rules like `in` and `pattern` are *skipped* when the
+    value is the default (`""`/`0`). Without `required`, an empty
+    string silently passes `in` and `pattern` checks.
     Exception: `Feature.meter_slug` deliberately uses the slug `pattern`
     *without* `required` — empty string is the legitimate "boolean
     feature" sentinel; the pattern rule fires only when meter_slug is set.
@@ -162,18 +168,18 @@ server-side**. Examples:
   204 — keeps REST and Connect responses shape-identical, lets REST
   clients call `response.json()` unconditionally). Caller refetches via
   `Get*` / `Value` for post-action state. `Create*` is the only
-  mutation that returns a body — server-assigned UUIDs aren't
+  mutation that returns a body — server-assigned ULIDs aren't
   recoverable otherwise.
 - **Idempotency**: `IngestEvent.id` is both event identifier and dedup
   key. Replays are silent no-ops (still `200 OK {}`) — duplicate
   visibility is server-side metrics, not response body.
-- **Pagination**: keyset by UUID v7. Request:
+- **Pagination**: keyset by ULID. Request:
   `optional int32 limit` (server default when absent) +
-  `optional string after [(buf.validate.field).string.uuid = true]` —
+  `optional string after` (validated by the ULID pattern) —
   the last `id` from the previous page; absent ⇒ first page. Response:
   just the `repeated <resource>` field — no `next_cursor`. Caller
   paginates by passing the last returned row's `id` as the next
-  `after`. Works because UUID v7 is lexically sortable; on the DB
+  `after`. Works because ULID is lexically sortable; on the DB
   side this is `WHERE id > $after ORDER BY id LIMIT $limit`. End of
   results ⇒ response array shorter than `limit` (or empty).
 
@@ -205,15 +211,29 @@ buf generate       # writes to gen/go/ (committed; consumers don't need buf)
 - Atomic check-and-deduct, multi-tenant, webhooks — v1+.
 - Streaming infra (Kafka / ClickHouse) — v1+.
 
+## Auth
+
+- Every endpoint requires `Authorization: Bearer <token>`.
+- **v0**: tokens are env-provisioned via `API_KEYS=mtr_xxx,mtr_yyy`
+  (comma-separated). Constant-time compare; no DB lookup.
+- Every valid token has full-admin access (single-tenant assumption).
+- Missing / invalid token ⇒ `UNAUTHENTICATED` (no distinction, avoids
+  enumeration).
+- DB-backed keys + management API + scopes / RBAC / rate limiting are
+  v1+ (see roadmap).
+
 ## Stack
 
 - Go + Postgres (SQLite for tests / single-tenant dev).
 - Module path: `github.com/meterysh/metery` (placeholder; change in
   proto `option go_package` if you rename the org).
-- **UUIDs**: generate **v7** (`uuid.NewV7()` from `github.com/google/uuid`
-  v1.6+). Format-compatible with `string.uuid = true` validation and
-  Postgres `uuid` column; gives sortable IDs for better B-tree locality.
-  Never `uuid.New()` (that's v4). Caller-assigned IDs (`UsageEvent.id`,
-  `Customer.key`, `Meter.slug`, `Feature.slug`) are exempt — caller picks
-  any format up to 256 chars (or the slug pattern `^[a-z][a-z0-9_]*$`
-  for `Meter.slug` / `Feature.slug`).
+- **IDs**: generate **ULIDs** via `github.com/oklog/ulid/v2`
+  (`ulid.Make().String()`), then lowercase. 26 chars, Crockford base32,
+  lexically sortable (time-prefix) for good B-tree locality. Stored
+  as `TEXT` in Postgres (readability over the ~10-byte saving of
+  binary) — easy to spot in `psql`, dumps, log lines. Caller-assigned
+  IDs (`UsageEvent.id`, `Customer.key`, `Meter.slug`, `Feature.slug`)
+  are exempt — caller picks any format up to 256 chars (or the slug
+  pattern `^[a-z][a-z0-9_]*$` for `Meter.slug` / `Feature.slug`),
+  but values that *would* parse as a valid ULID are rejected at
+  create time so the format-detect routing stays unambiguous.

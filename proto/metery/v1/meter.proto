@@ -17,8 +17,8 @@ option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
 message Meter {
   string id = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string.uuid = true
-  ]; // server-generated UUID v7
+    (buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"
+  ]; // server-generated ULID (lowercase Crockford base32)
   string slug = 2 [
     (buf.validate.field).required = true,
     (buf.validate.field).string = {
@@ -103,7 +103,7 @@ message CreateMeterResponse {
 }
 
 message GetMeterRequest {
-  // Either Meter.id (UUID) or Meter.slug. Server resolves.
+  // Either Meter.id (ULID) or Meter.slug. Server resolves.
   string id_or_slug = 1 [(buf.validate.field).required = true];
 }
 message GetMeterResponse {
@@ -116,7 +116,7 @@ message ListMetersRequest {
     gt: 0
     lte: 1000
   }];
-  optional string after = 3 [(buf.validate.field).string.uuid = true];
+  optional string after = 3 [(buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"];
 }
 message ListMetersResponse {
   repeated Meter meters = 1;

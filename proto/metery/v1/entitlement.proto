@@ -19,7 +19,7 @@ option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
 message Entitlement {
   string id = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string.uuid = true
+    (buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"
   ];
   // Customer.key — FK reference, immutable.
   string customer_key = 2 [(buf.validate.field).required = true];
@@ -37,7 +37,7 @@ message Entitlement {
 message EntitlementValue {
   // True when access should be allowed for the requested cost (or any
   // access at all for boolean / cost-omitted metered reads).
-  bool has_access = 1;
+  bool has_access = 1 [(buf.validate.field).required = true];
   // Remaining credits in the current period. May be negative under
   // concurrent overspend (v0 — see design §9). Metered only.
   optional int64 balance = 2;
@@ -121,7 +121,7 @@ message ListEntitlementsRequest {
     gt: 0
     lte: 1000
   }];
-  optional string after = 3 [(buf.validate.field).string.uuid = true];
+  optional string after = 3 [(buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"];
 }
 message ListEntitlementsResponse {
   repeated Entitlement entitlements = 1;
