@@ -26,7 +26,7 @@ option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
 message Customer {
   string id = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"
+    (buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"
   ]; // server-generated ULID
   string key = 2 [
     (buf.validate.field).required = true,
@@ -100,7 +100,7 @@ message ListCustomersRequest {
     gt: 0
     lte: 1000
   }];
-  optional string after = 3 [(buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"];
+  optional string after = 3 [(buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"];
 }
 message ListCustomersResponse {
   repeated Customer customers = 1;

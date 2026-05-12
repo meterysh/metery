@@ -15,11 +15,11 @@ option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
 message Grant {
   string id = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"
+    (buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"
   ];
   string entitlement_id = 2 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"
+    (buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"
   ];
   string parent_grant_id = 3; // set on children of a recurring grant
   int64 amount = 4 [
@@ -91,7 +91,7 @@ message ListGrantsRequest {
     gt: 0
     lte: 1000
   }];
-  optional string after = 5 [(buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"];
+  optional string after = 5 [(buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"];
 }
 message ListGrantsResponse {
   repeated Grant grants = 1;
@@ -100,7 +100,7 @@ message ListGrantsResponse {
 message VoidGrantRequest {
   string id = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"
+    (buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"
   ];
 }
 message VoidGrantResponse {}

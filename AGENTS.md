@@ -131,9 +131,12 @@ server-side**. Examples:
   - `required = true` for presence — do **not** use `string.min_len = 1`.
   - `string = {in: [...]}` for closed-set discriminators. We deliberately
     chose strings + `in` over proto enums for clean JSON output.
-  - ULID fields use `string.pattern = "^[0-9a-hjkmnp-tv-z]{26}$"`
-    (26 chars, lowercase Crockford base32 alphabet — skips i/l/o/u).
-    No built-in protovalidate `ulid` rule; pattern does the job.
+  - ULID fields use `string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"`.
+    26 chars, lowercase Crockford base32 (skips i/l/o/u). First char
+    is `[0-7]` because ULID's 48-bit timestamp encodes into 50 bits
+    of the first 10 chars; the top 2 bits of char 1 must be zero, so
+    valid first chars are 0–7. Rejecting `[8-9a-z]` first chars
+    catches timestamp-overflow garbage at validation time.
   - **Always pair `in` / `pattern` with `required = true` on
     proto3 scalar fields.** Protovalidate honors implicit field
     presence: rules like `in` and `pattern` are *skipped* when the
