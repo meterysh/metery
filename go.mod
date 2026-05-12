@@ -1,0 +1,45 @@
+module github.com/meterysh/metery
+
+go 1.26.3
+
+require (
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1
+	connectrpc.com/connect v1.19.2
+	connectrpc.com/vanguard v0.4.0
+	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jmoiron/sqlx v1.4.0
+	github.com/joho/godotenv v1.5.1
+	github.com/oklog/ulid/v2 v2.1.1
+	github.com/pressly/goose/v3 v3.27.1
+	github.com/sosodev/duration v1.4.0
+	github.com/spf13/cobra v1.10.2
+	golang.org/x/net v0.54.0
+	google.golang.org/genproto/googleapis/api v0.0.0-20260223185530-2f722ef697dc
+	google.golang.org/protobuf v1.36.11
+	modernc.org/sqlite v1.50.1
+)
+
+require (
+	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/lib/pq v1.12.3 // indirect
+	github.com/mattn/go-isatty v0.0.21 // indirect
+	github.com/mattn/go-sqlite3 v1.14.44 // indirect
+	github.com/mfridman/interpolate v0.0.2 // indirect
+	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/sethvargo/go-retry v0.3.0 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260420184626-e10c466a9529 // indirect
+	modernc.org/libc v1.72.3 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
+)

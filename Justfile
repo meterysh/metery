@@ -9,3 +9,12 @@ proto-format:
 
 proto-breaking:
     buf breaking --against '.git#branch=main'
+
+test:
+    go test -v ./...
+
+build:
+    go build ./cmd/metery
+
+run: build
+    ./metery serve --migrate

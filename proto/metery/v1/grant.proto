@@ -21,25 +21,26 @@ message Grant {
     (buf.validate.field).required = true,
     (buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"
   ];
-  string parent_grant_id = 3; // set on children of a recurring grant
-  int64 amount = 4 [
+  int64 amount = 3 [
     (buf.validate.field).required = true,
     (buf.validate.field).int64.gt = 0
   ];
-  int32 priority = 5 [
+  int32 priority = 4 [
     (buf.validate.field).required = true,
     (buf.validate.field).int32 = {
       gte: 0
       lte: 1000
     }
   ]; // lower number burns first
-  Recurrence recurrence = 6; // optional
-  Rollover rollover = 7; // optional
-  google.protobuf.Struct metadata = 8;
-  google.protobuf.Timestamp created_at = 9 [(buf.validate.field).required = true];
-  google.protobuf.Timestamp effective_at = 10 [(buf.validate.field).required = true];
-  google.protobuf.Timestamp expires_at = 11; // null = no expiration
-  google.protobuf.Timestamp voided_at = 12; // null on active grants
+  Recurrence recurrence = 5; // optional
+  Rollover rollover = 6; // optional
+  google.protobuf.Struct metadata = 7;
+  google.protobuf.Timestamp created_at = 8 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp effective_at = 9 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp expires_at = 10; // null = no expiration
+  google.protobuf.Timestamp voided_at = 11; // null on active grants
+  // parent_grant_id (recurrence lineage) is server-internal storage —
+  // not exposed on the wire. See docs/design.md §7.
 }
 
 service GrantService {
