@@ -523,7 +523,7 @@ CREATE TABLE grants (
   recurrence_anchor   TIMESTAMPTZ,
   rollover_max        BIGINT,                           -- NULL = no rollover
   rollover_type       TEXT,                             -- 'original' | 'remaining'
-  parent_grant_id     TEXT REFERENCES grants(id),       -- recurring chain
+  parent_grant_id     TEXT REFERENCES grants(id),       -- recurring chain; internal — not exposed on the wire
   metadata            JSONB,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   voided_at           TIMESTAMPTZ                       -- soft-void
@@ -671,7 +671,56 @@ no caches in v0.
   empty on Feature is the discriminator (no `type` field). Static
   entitlements deferred to v1+.
 
-## 12. Roadmap & implementation plan
+## 12. Testing
+
+The balance ledger is the system's brain; the rest is plumbing. The
+testing strategy follows from that.
+
+**Principle 1: balance computation is tested first, against fixtures,
+before any handlers exist.** Each fixture is a declarative scenario —
+a set of grants and events plus an expected balance at `T`. The
+`entitlement` package's compute function takes the inputs and is
+asserted against the expected output. This forces us to nail priority
+ordering, period rollover (anchor + duration math), rollover policy
+(`original` vs `remaining`), and expiration before we wrap it in any
+SQL. If the fixtures pass, everything above is plumbing.
+
+**Principle 2: v0 runs tests against SQLite only.** Both drivers exist
+in the store layer (SQLite for tests/dev, Postgres for prod), but the
+test suite runs only against SQLite in-memory. Trade-off: instant
+test feedback, zero contributor setup, no Docker — at the cost of
+not catching Postgres-specific divergence (JSONB operators vs SQLite
+`json_extract`, `timestamptz` semantics, partial-index planner
+behavior). The biggest divergence risk is the aggregation query
+(`payload->>meter.value_property`); pre-prod manual validation against
+real Postgres is the mitigation in v0. A Postgres test suite (via
+`testcontainers-go`) is a v1 candidate once we have real users and
+real billing data running through it. See roadmap.md.
+
+**Principle 3: three layers, three roles, no overlap:**
+
+| Layer | What it covers | What it doesn't |
+|---|---|---|
+| Unit | Pure domain logic in `entitlement`: balance math, period rollover, priority ordering. In-memory fixtures. | Anything that touches I/O |
+| Integration (store) | Repository round-trips, idempotency (same event id twice ⇒ one row), unique constraints, query correctness. SQLite in-memory (Postgres tests deferred to v1). | API surface, auth |
+| Handler | ConnectRPC + REST end-to-end via `httptest`. Auth middleware (bearer header, env keys). Validation surface (protovalidate rejects bad input). Happy path from §6.0. | Performance, load |
+
+**What's explicitly out of scope for v0 testing:**
+
+- Postgres-specific test suite (JSONB aggregation, `timestamptz`
+  semantics, partial-index planner behavior). Deferred to v1; v0
+  ships with manual pre-prod validation as the safety net.
+- Load / concurrency above a few writers — needs real latency targets
+  (open question §11.1).
+- Real billing-data correctness at scale — needs production fixtures.
+- Multi-region / multi-tenant behaviors — single-tenant assumption.
+
+**Tooling:** Go's stdlib `testing` is the baseline. `testify/require`
+for assertions if it earns its weight; otherwise stdlib `t.Fatal` is
+fine. No mock frameworks; prefer real components or hand-written
+fakes.
+
+## 13. Roadmap & implementation plan
 
 Tier breakdown (v0 / v1 / v1+) and the v0 implementation checklist live
 in [roadmap.md](roadmap.md).

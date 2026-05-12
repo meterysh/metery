@@ -41,15 +41,24 @@ the ledger or breaking existing API contracts. Anchored to
 
 - [x] Lock v0 API surface — proto + ConnectRPC bindings + REST transcoding via `google.api.http`. See `proto/metery/v1/`.
 - [x] Validation declared in proto via `buf.validate` (protovalidate).
+- [ ] Initialize Go module (`go mod init github.com/meterysh/metery`) + Makefile.
 - [ ] Write Postgres migrations from design §7. SQLite parity migrations gated by driver.
-- [ ] Initialize Go module (`go mod init github.com/meterysh/metery`).
-- [ ] Implement `entitlement` package with balance computation + tests against a known ledger fixture.
-- [ ] Wire up Connect handlers (and REST transcoder via `vanguard-go`) + minimal in-process recurrence worker.
+- [ ] Implement `entitlement` package with balance computation.
+- [ ] **Ledger fixture suite** — declarative test scenarios (grants + events ⇒ expected balance) exercising priority ordering, period rollover, rollover policies, expiration. Must pass *before* wiring any handlers.
+- [ ] `store` package — repository interface + Postgres impl + SQLite impl. v0 tests run against SQLite only; Postgres tests deferred to v1.
+- [ ] Auth middleware — bearer header parsing, `API_KEYS` env loading, constant-time compare, `UNAUTHENTICATED` for missing/invalid.
+- [ ] Wire up Connect handlers (and REST transcoder via `vanguard-go`) + handler-level smoke test from §6.0.
+- [ ] Minimal in-process recurrence worker — emits child grants on schedule; idempotent via `(parent_grant_id, effective_at)` unique constraint.
 
 ## v1 — plans, subscriptions, billing sync
 
 Adds, on top of v0:
 
+- **Postgres-specific test suite** — same store/repository contract,
+  run against Postgres via `testcontainers-go`. Covers JSONB
+  aggregation (`payload->>meter.value_property`), `timestamptz`
+  semantics, partial-index behavior — the divergences SQLite-only
+  testing in v0 doesn't catch.
 - **API key management** — `api_keys` table (hashed storage, named,
   revocable), `CreateApiKey` / `ListApiKeys` / `RevokeApiKey` RPCs.
   v0 env keys import as a one-shot migration. Still admin-only auth;
