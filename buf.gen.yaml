@@ -1,5 +1,4 @@
 version: v2
-clean: true
 plugins:
   - remote: buf.build/protocolbuffers/go
     out: gen/go
@@ -7,3 +6,14 @@ plugins:
   - remote: buf.build/connectrpc/go
     out: gen/go
     opt: paths=source_relative
+  - remote: buf.build/community/sudorandom-connect-openapi:v0.25.6
+    out: public
+    opt:
+      - only-googleapi-http
+      - short-operation-ids
+      - trim-unused-types
+      - with-proto-names
+      - without-default-tags
+      - path=openapi.yaml
+inputs:
+  - directory: proto

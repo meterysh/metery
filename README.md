@@ -17,6 +17,7 @@ Integrate with your app to check customer access and ingest usage events.
 
 | Variable | Description | Default |
 |---|---|---|
+| `PORT` | Server listen port | `8080` |
 | `DATABASE_URL` | Database connection string (see below) | `file:metery.db?cache=shared&mode=rwc` |
 | `API_KEYS` | Comma-separated list of Bearer tokens for API authentication | required |
 | `MIGRATE` | Run migrations on startup when `true` | — |

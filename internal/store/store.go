@@ -9,8 +9,8 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"github.com/jmoiron/sqlx"
-	_ "modernc.org/sqlite" // sqlite driver
 	"github.com/meterysh/metery/internal/ledger"
+	_ "modernc.org/sqlite" // sqlite driver
 )
 
 // Store provides persistence. We use sqlx to make mapping easier.
@@ -42,9 +42,14 @@ func (s *Store) CreateCustomer(ctx context.Context, c *Customer) error {
 }
 
 func (s *Store) GetCustomer(ctx context.Context, idOrKey string) (*Customer, error) {
-	q := `SELECT * FROM customers WHERE id = ? OR key = ?`
+	var q string
+	if isULID(idOrKey) {
+		q = `SELECT * FROM customers WHERE id = ?`
+	} else {
+		q = `SELECT * FROM customers WHERE key = ?`
+	}
 	var c Customer
-	err := s.db.GetContext(ctx, &c, s.db.Rebind(q), idOrKey, idOrKey)
+	err := s.db.GetContext(ctx, &c, s.db.Rebind(q), idOrKey)
 	return &c, err
 }
 
@@ -75,9 +80,14 @@ func (s *Store) CreateMeter(ctx context.Context, m *Meter) error {
 }
 
 func (s *Store) GetMeter(ctx context.Context, idOrSlug string) (*Meter, error) {
-	q := `SELECT * FROM meters WHERE id = ? OR slug = ?`
+	var q string
+	if isULID(idOrSlug) {
+		q = `SELECT * FROM meters WHERE id = ?`
+	} else {
+		q = `SELECT * FROM meters WHERE slug = ?`
+	}
 	var m Meter
-	err := s.db.GetContext(ctx, &m, s.db.Rebind(q), idOrSlug, idOrSlug)
+	err := s.db.GetContext(ctx, &m, s.db.Rebind(q), idOrSlug)
 	return &m, err
 }
 
@@ -98,9 +108,14 @@ func (s *Store) CreateFeature(ctx context.Context, f *Feature) error {
 }
 
 func (s *Store) GetFeature(ctx context.Context, idOrSlug string) (*Feature, error) {
-	q := `SELECT * FROM features WHERE id = ? OR slug = ?`
+	var q string
+	if isULID(idOrSlug) {
+		q = `SELECT * FROM features WHERE id = ?`
+	} else {
+		q = `SELECT * FROM features WHERE slug = ?`
+	}
 	var f Feature
-	err := s.db.GetContext(ctx, &f, s.db.Rebind(q), idOrSlug, idOrSlug)
+	err := s.db.GetContext(ctx, &f, s.db.Rebind(q), idOrSlug)
 	return &f, err
 }
 
@@ -239,6 +254,11 @@ func (s *Store) FetchUsage(ctx context.Context, customerKey string, m *Meter, fr
 
 func NewULID() string {
 	return strings.ToLower(ulid.Make().String())
+}
+
+func isULID(val string) bool {
+	_, err := ulid.Parse(strings.ToUpper(val))
+	return err == nil
 }
 
 func (s *Store) ListRecurringGrants(ctx context.Context) ([]GrantRow, error) {

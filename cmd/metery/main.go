@@ -135,20 +135,26 @@ func main() {
 
 			mux := http.NewServeMux()
 			mux.Handle("/", transcoder)
+			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("ok"))
+			})
 			mux.HandleFunc("/worker/run", func(w http.ResponseWriter, r *http.Request) {
 				worker.RunOnce(r.Context(), st)
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("{\"status\":\"ok\"}"))
 			})
 
+			port := getEnvOrDefault("PORT", "8080")
+
 			h2cSrv := &http2.Server{}
 			httpSrv := &http.Server{
-				Addr:    ":8080",
+				Addr:    ":" + port,
 				Handler: h2c.NewHandler(mux, h2cSrv),
 			}
 
 			go func() {
-				log.Println("Listening on :8080")
+				log.Printf("Listening on :%s", port)
 				if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					log.Fatalf("server failed: %v", err)
 				}
