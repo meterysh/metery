@@ -52,7 +52,15 @@ func setupTestServer(t *testing.T) (*store.Store, *httptest.Server) {
 		vanguard.NewService(meteryv1connect.NewEventServiceHandler(srv, opts)),
 	}
 
-	transcoder, err := vanguard.NewTranscoder(services)
+	transcoder, err := vanguard.NewTranscoder(services,
+		vanguard.WithCodec(func(res vanguard.TypeResolver) vanguard.Codec {
+			codec := vanguard.NewJSONCodec(res)
+			codec.MarshalOptions.UseProtoNames = true
+					codec.MarshalOptions.EmitUnpopulated = true
+			codec.UnmarshalOptions.DiscardUnknown = true
+			return codec
+		}),
+	)
 	if err != nil {
 		t.Fatalf("failed to init vanguard: %v", err)
 	}
@@ -143,7 +151,6 @@ func TestEndToEndV0HappyPath(t *testing.T) {
 		Id:       "evt_1",
 		Customer: cResp.Msg.Customer.Key,
 		Type:     "api_call",
-		
 	}))
 	if err != nil {
 		t.Fatalf("ingest event failed: %v", err)

@@ -20,8 +20,8 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
-	_ "modernc.org/sqlite"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "modernc.org/sqlite"
 
 	"github.com/meterysh/metery/gen/go/metery/v1/meteryv1connect"
 	"github.com/meterysh/metery/internal/auth"
@@ -118,7 +118,15 @@ func main() {
 				vanguard.NewService(meteryv1connect.NewEventServiceHandler(srv, opts)),
 			}
 
-			transcoder, err := vanguard.NewTranscoder(services)
+			transcoder, err := vanguard.NewTranscoder(services,
+				vanguard.WithCodec(func(res vanguard.TypeResolver) vanguard.Codec {
+					codec := vanguard.NewJSONCodec(res)
+					codec.MarshalOptions.UseProtoNames = true
+					codec.MarshalOptions.EmitUnpopulated = true
+					codec.UnmarshalOptions.DiscardUnknown = true
+					return codec
+				}),
+			)
 			if err != nil {
 				log.Fatalf("failed to initialize vanguard transcoder: %v", err)
 			}
