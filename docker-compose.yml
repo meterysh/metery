@@ -1,0 +1,15 @@
+services:
+  metery:
+    build:
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: file:/data/metery.db
+      MIGRATE: "true"
+      API_KEYS: ${API_KEYS}
+    volumes:
+      - metery-data:/data
+
+volumes:
+  metery-data:

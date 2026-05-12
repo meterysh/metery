@@ -31,7 +31,7 @@ import (
 	"github.com/meterysh/metery/internal/worker"
 )
 
-var dbUrl string
+var Version = "dev"
 
 func getDriver(url string) string {
 	if strings.HasPrefix(url, "postgres://") || strings.HasPrefix(url, "postgresql://") {
@@ -41,17 +41,17 @@ func getDriver(url string) string {
 	return "sqlite"
 }
 
-func initDB() *sql.DB {
-	driver := getDriver(dbUrl)
-	db, err := sql.Open(driver, dbUrl)
+func initDB(url string) *sql.DB {
+	driver := getDriver(url)
+	db, err := sql.Open(driver, url)
 	if err != nil {
 		log.Fatalf("failed to open db: %v", err)
 	}
 	return db
 }
 
-func runMigrations(db *sql.DB) {
-	driver := getDriver(dbUrl)
+func runMigrations(db *sql.DB, url string) {
+	driver := getDriver(url)
 	goose.SetBaseFS(migrations.FS)
 	if err := goose.SetDialect(driver); err != nil {
 		log.Fatalf("failed to set goose dialect: %v", err)
@@ -77,6 +77,8 @@ func getEnvOrDefault(key, def string) string {
 func main() {
 	_ = godotenv.Load()
 
+	var dbUrl string
+
 	rootCmd := &cobra.Command{
 		Use:   "metery",
 		Short: "Metery - Usage billing and entitlements backend",
@@ -94,11 +96,11 @@ func main() {
 				doMigrate = envMig == "true" || envMig == "1" || envMig == "yes"
 			}
 
-			db := initDB()
+			db := initDB(dbUrl)
 			defer db.Close()
 
 			if doMigrate {
-				runMigrations(db)
+				runMigrations(db, dbUrl)
 			}
 
 			driver := getDriver(dbUrl)
@@ -170,9 +172,9 @@ func main() {
 		Use:   "migrate",
 		Short: "Run database migrations",
 		Run: func(cmd *cobra.Command, args []string) {
-			db := initDB()
+			db := initDB(dbUrl)
 			defer db.Close()
-			runMigrations(db)
+			runMigrations(db, dbUrl)
 			log.Println("Migrations completed successfully")
 		},
 	}
@@ -181,7 +183,7 @@ func main() {
 		Use:   "worker",
 		Short: "Run the recurrence worker",
 		Run: func(cmd *cobra.Command, args []string) {
-			db := initDB()
+			db := initDB(dbUrl)
 			defer db.Close()
 			driver := getDriver(dbUrl)
 			st := store.New(db, driver)
@@ -203,7 +205,7 @@ func main() {
 		Use:   "version",
 		Short: "Print the version number",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("metery v0.1.0")
+			fmt.Printf("metery version %s\n", Version)
 		},
 	}
 
