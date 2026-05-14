@@ -20,6 +20,7 @@ Integrate with your app to check customer access and ingest usage events.
 | `DATABASE_URL` | Database connection string (see below) | `file:metery.db` |
 | `API_KEYS` | Comma-separated list of Bearer tokens for API authentication | required |
 | `MIGRATE` | Run migrations on startup when `true` | — |
+| `HOSTNAME` | Public base URL — injected into the served OpenAPI spec | `http://localhost:8080` |
 
 ## Database
 

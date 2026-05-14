@@ -18,6 +18,7 @@ import (
 	meteryv1 "github.com/meterysh/metery/gen/go/metery/v1"
 	"github.com/meterysh/metery/gen/go/metery/v1/meteryv1connect"
 	"github.com/meterysh/metery/internal/auth"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"github.com/meterysh/metery/internal/store"
 	"github.com/meterysh/metery/internal/store/migrations"
 	"github.com/pressly/goose/v3"
@@ -146,35 +147,55 @@ func TestEndToEndV0HappyPath(t *testing.T) {
 		t.Fatalf("create grant failed: %v", err)
 	}
 
-	// 6. Ingest Event
+	// 6. Check balance before any usage
+	evalAt := timestamppb.Now()
+	valResp, err := entClient.GetEntitlementValue(ctx, connect.NewRequest(&meteryv1.GetEntitlementValueRequest{
+		CustomerIdOrKey: cResp.Msg.Customer.Key,
+		FeatureIdOrSlug: fResp.Msg.Feature.Slug,
+		At:              evalAt,
+	}))
+	if err != nil {
+		t.Fatalf("get value failed: %v", err)
+	}
+	if !valResp.Msg.Value.HasAccess {
+		t.Errorf("expected access to be true")
+	}
+	if *valResp.Msg.Value.Balance != 1000 {
+		t.Errorf("expected balance 1000 before usage, got %v", *valResp.Msg.Value.Balance)
+	}
+	if *valResp.Msg.Value.Usage != 0 {
+		t.Errorf("expected usage 0 before any events, got %v", *valResp.Msg.Value.Usage)
+	}
+
+	// 7. Ingest event with explicit time anchored to evalAt
+	eventTime := timestamppb.New(evalAt.AsTime().Add(time.Second))
 	_, err = eventClient.IngestEvent(ctx, connect.NewRequest(&meteryv1.IngestEventRequest{
 		Id:       "evt_1",
 		Customer: cResp.Msg.Customer.Key,
 		Type:     "api_call",
+		Time:     eventTime,
 	}))
 	if err != nil {
 		t.Fatalf("ingest event failed: %v", err)
 	}
 
-	// wait for sqlite eventual consistency (should be sync but to be safe if tests act up)
-	time.Sleep(100 * time.Millisecond)
-
-	// 7. Check Balance
-	valResp, err := entClient.GetEntitlementValue(ctx, connect.NewRequest(&meteryv1.GetEntitlementValueRequest{
+	// 8. Check balance after usage — evaluate after the event time
+	evalAt2 := timestamppb.New(eventTime.AsTime().Add(time.Second))
+	valResp2, err := entClient.GetEntitlementValue(ctx, connect.NewRequest(&meteryv1.GetEntitlementValueRequest{
 		CustomerIdOrKey: cResp.Msg.Customer.Key,
 		FeatureIdOrSlug: fResp.Msg.Feature.Slug,
+		At:              evalAt2,
 	}))
 	if err != nil {
-		t.Fatalf("get value failed: %v", err)
+		t.Fatalf("get value after event failed: %v", err)
 	}
-
-	if !valResp.Msg.Value.HasAccess {
-		t.Errorf("expected access to be true")
+	if !valResp2.Msg.Value.HasAccess {
+		t.Errorf("expected access to still be true")
 	}
-	if *valResp.Msg.Value.Balance != 1000 {
-		t.Errorf("expected balance to be 1000, got %v", *valResp.Msg.Value.Balance)
+	if *valResp2.Msg.Value.Balance != 999 {
+		t.Errorf("expected balance 999 after 1 event, got %v", *valResp2.Msg.Value.Balance)
 	}
-	if *valResp.Msg.Value.Usage != 0 {
-		t.Errorf("expected usage to be 0, got %v", *valResp.Msg.Value.Usage)
+	if *valResp2.Msg.Value.Usage != 1 {
+		t.Errorf("expected usage 1 after 1 event, got %v", *valResp2.Msg.Value.Usage)
 	}
 }
