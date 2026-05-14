@@ -33,7 +33,7 @@ message Entitlement {
 // Value response. Caller discriminates on field presence:
 //   - boolean entitlements: only `has_access` is populated.
 //   - metered entitlements: `has_access` + `balance` / `usage` /
-//     `overage` / `usage_period` / `last_reset` are all populated.
+//     `overage` are all populated.
 message EntitlementValue {
   // True when access should be allowed for the requested cost (or any
   // access at all for boolean / cost-omitted metered reads).
@@ -47,12 +47,6 @@ message EntitlementValue {
   // Excess consumption beyond granted credits: max(0, -balance).
   // Metered only.
   optional int64 overage = 4;
-  // Period boundaries currently in effect. Empty for entitlements with
-  // no usage_period.
-  TimeWindow usage_period = 5;
-  // When the usage counter last started fresh — either via period
-  // rollover or an explicit ResetEntitlement call. Metered only.
-  google.protobuf.Timestamp last_reset = 6;
 }
 
 service EntitlementService {
