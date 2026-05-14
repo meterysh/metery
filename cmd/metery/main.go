@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -133,13 +134,35 @@ func main() {
 				log.Fatalf("failed to initialize vanguard transcoder: %v", err)
 			}
 
+			hostname := getEnvOrDefault("HOSTNAME", "http://localhost:8080")
+
 			mux := http.NewServeMux()
 			mux.Handle("/", transcoder)
+			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("ok"))
+			})
 			mux.HandleFunc("/worker/run", func(w http.ResponseWriter, r *http.Request) {
 				worker.RunOnce(r.Context(), st)
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("{\"status\":\"ok\"}"))
 			})
+
+			publicFS := http.FileServer(http.Dir("public"))
+			if spec, err := os.ReadFile("public/openapi.yaml"); err == nil {
+				spec = bytes.ReplaceAll(spec, []byte("https://metery.example.com"), []byte(hostname))
+				mux.HandleFunc("GET /openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
+					w.Write(spec)
+				})
+			}
+			if entries, err := os.ReadDir("public"); err == nil {
+				for _, e := range entries {
+					if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") && e.Name() != "openapi.yaml" {
+						mux.Handle("GET /"+e.Name(), publicFS)
+					}
+				}
+			}
 
 			h2cSrv := &http2.Server{}
 			httpSrv := &http.Server{
