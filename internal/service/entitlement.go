@@ -10,7 +10,6 @@ import (
 	meteryv1 "github.com/meterysh/metery/gen/go/metery/v1"
 	"github.com/meterysh/metery/internal/ledger"
 	"github.com/meterysh/metery/internal/store"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func (s *Service) CreateEntitlement(ctx context.Context, req *connect.Request[meteryv1.CreateEntitlementRequest]) (*connect.Response[meteryv1.CreateEntitlementResponse], error) {
@@ -121,16 +120,6 @@ func (s *Service) GetEntitlementValue(ctx context.Context, req *connect.Request[
 		Balance:   &res.Balance,
 		Usage:     &res.Usage,
 		Overage:   &res.Overage,
-	}
-
-	if res.Period != nil {
-		respValue.UsagePeriod = &meteryv1.TimeWindow{
-			From: timestamppb.New(res.Period.From),
-			To:   timestamppb.New(res.Period.To),
-		}
-	}
-	if res.LastReset != nil {
-		respValue.LastReset = timestamppb.New(*res.LastReset)
 	}
 
 	if req.Msg.Cost != nil {

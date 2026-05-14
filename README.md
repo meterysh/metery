@@ -1,6 +1,6 @@
 # Metery
 
-Self-hosted usage-billing and entitlements backend in the spirit of OpenMeter.
+Self-hosted usage-billing and entitlements backend.
 
 ## Quick start
 
@@ -17,7 +17,7 @@ Integrate with your app to check customer access and ingest usage events.
 
 | Variable | Description | Default |
 |---|---|---|
-| `DATABASE_URL` | Database connection string (see below) | `file:metery.db?cache=shared&mode=rwc` |
+| `DATABASE_URL` | Database connection string (see below) | `file:metery.db` |
 | `API_KEYS` | Comma-separated list of Bearer tokens for API authentication | required |
 | `MIGRATE` | Run migrations on startup when `true` | — |
 

@@ -8,6 +8,8 @@ deps:
 lint:
   use:
     - STANDARD
+  ignore:
+    - proto/openapi.proto
 breaking:
   use:
     - FILE
