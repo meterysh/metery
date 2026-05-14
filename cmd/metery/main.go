@@ -146,7 +146,7 @@ func main() {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("ok"))
 			})
-			mux.HandleFunc("/worker/run", func(w http.ResponseWriter, r *http.Request) {
+			mux.HandleFunc("/scheduler/run", func(w http.ResponseWriter, r *http.Request) {
 				worker.RunOnce(r.Context(), st)
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("{\"status\":\"ok\"}"))
@@ -206,16 +206,16 @@ func main() {
 		},
 	}
 
-	workerCmd := &cobra.Command{
-		Use:   "worker",
-		Short: "Run the recurrence worker",
+	schedulerCmd := &cobra.Command{
+		Use:   "scheduler",
+		Short: "Run the recurrence scheduler",
 		Run: func(cmd *cobra.Command, args []string) {
 			db := initDB(dbUrl)
 			defer db.Close()
 			driver := getDriver(dbUrl)
 			st := store.New(db, driver)
 
-			log.Println("Starting recurrence worker...")
+			log.Println("Starting recurrence scheduler...")
 			ctx, cancel := context.WithCancel(context.Background())
 
 			go worker.RunRecurrenceWorker(ctx, st)
@@ -236,7 +236,7 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(serveCmd, migrateCmd, workerCmd, versionCmd)
+	rootCmd.AddCommand(serveCmd, migrateCmd, schedulerCmd, versionCmd)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

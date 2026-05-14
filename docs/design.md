@@ -600,9 +600,9 @@ Given `(entitlement, T)`:
 7. `balance = Σ per_grant_remaining`; `usage = aggregate result`;
    `overage = max(0, -balance)`.
 
-For v0, recompute on every read. Add snapshots once read traffic justifies
-it — a snapshot at every period boundary bounds the replay window to one
-period of events.
+Snapshots at period boundaries are written after each balance computation
+and used to seed subsequent reads, bounding the event replay window to the
+current period only.
 
 ## 9. Consistency & concurrency
 
@@ -716,8 +716,7 @@ real billing data running through it. See roadmap.md.
 - Postgres-specific test suite (JSONB aggregation, `timestamptz`
   semantics, partial-index planner behavior). Deferred to v1; v0
   ships with manual pre-prod validation as the safety net.
-- Load / concurrency above a few writers — needs real latency targets
-  (open question §11.1).
+- Load / concurrency above a few writers — no latency target set yet.
 - Real billing-data correctness at scale — needs production fixtures.
 - Multi-region / multi-tenant behaviors — single-tenant assumption.
 

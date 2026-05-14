@@ -37,7 +37,7 @@ SQLite serialises all writers — use PostgreSQL for any concurrent workload.
 
 ```
 metery serve [--migrate]  # start the server, optionally run migrations first
-metery worker             # run the recurrence worker process
+metery scheduler          # run the recurrence scheduler process
 metery migrate            # run database migrations and exit
 metery version            # print version
 metery help               # print usage
@@ -118,20 +118,20 @@ curl -X POST http://localhost:8080/v1/events \
 
 Connect and gRPC clients call the same endpoints under `/metery.v1.*Service/<RPC>` with appropriate protocol headers.
 
-## Worker
+## Scheduler
 
-Grants can be configured to recur periodically (e.g., monthly resets). The recurrence worker scans and emits new grants automatically.
+Grants can be configured to recur periodically (e.g., monthly resets). The scheduler scans and emits new grants automatically.
 
 Deploy as a long-lived process alongside the server:
 
 ```bash
-metery worker
+metery scheduler
 ```
 
 On request-based platforms (Cloud Run, etc.) where a persistent process isn't practical, trigger a single pass over HTTP instead:
 
 ```bash
-curl -X POST http://localhost:8080/worker/run
+curl -X POST http://localhost:8080/scheduler/run
 ```
 
 ## License
