@@ -10,6 +10,7 @@ import (
 	meteryv1 "github.com/meterysh/metery/gen/go/metery/v1"
 	"github.com/meterysh/metery/internal/ledger"
 	"github.com/meterysh/metery/internal/store"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func (s *Service) CreateEntitlement(ctx context.Context, req *connect.Request[meteryv1.CreateEntitlementRequest]) (*connect.Response[meteryv1.CreateEntitlementResponse], error) {
@@ -49,15 +50,65 @@ func (s *Service) CreateEntitlement(ctx context.Context, req *connect.Request[me
 }
 
 func (s *Service) GetEntitlement(ctx context.Context, req *connect.Request[meteryv1.GetEntitlementRequest]) (*connect.Response[meteryv1.GetEntitlementResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+	c, err := s.store.GetCustomer(ctx, req.Msg.CustomerIdOrKey)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("customer not found"))
+	}
+	f, err := s.store.GetFeature(ctx, req.Msg.FeatureIdOrSlug)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("feature not found"))
+	}
+	e, err := s.store.GetEntitlement(ctx, c.ID, f.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("entitlement not found"))
+	}
+	return connect.NewResponse(&meteryv1.GetEntitlementResponse{
+		Entitlement: entitlementToProto(e, c.Key, f.Slug),
+	}), nil
 }
 
 func (s *Service) ListEntitlements(ctx context.Context, req *connect.Request[meteryv1.ListEntitlementsRequest]) (*connect.Response[meteryv1.ListEntitlementsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+	c, err := s.store.GetCustomer(ctx, req.Msg.CustomerIdOrKey)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("customer not found"))
+	}
+	limit := 100
+	if req.Msg.Limit != nil {
+		limit = int(*req.Msg.Limit)
+	}
+	after := ""
+	if req.Msg.After != nil {
+		after = *req.Msg.After
+	}
+	es, err := s.store.ListEntitlements(ctx, c.ID, limit, after)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	res := make([]*meteryv1.Entitlement, len(es))
+	for i, e := range es {
+		f, _ := s.store.GetFeature(ctx, e.FeatureID)
+		slug := ""
+		if f != nil {
+			slug = f.Slug
+		}
+		res[i] = entitlementToProto(&e, c.Key, slug)
+	}
+	return connect.NewResponse(&meteryv1.ListEntitlementsResponse{Entitlements: res}), nil
 }
 
 func (s *Service) DeleteEntitlement(ctx context.Context, req *connect.Request[meteryv1.DeleteEntitlementRequest]) (*connect.Response[meteryv1.DeleteEntitlementResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+	c, err := s.store.GetCustomer(ctx, req.Msg.CustomerIdOrKey)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("customer not found"))
+	}
+	f, err := s.store.GetFeature(ctx, req.Msg.FeatureIdOrSlug)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("feature not found"))
+	}
+	if err := s.store.DeleteEntitlement(ctx, c.ID, f.ID); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&meteryv1.DeleteEntitlementResponse{}), nil
 }
 
 func (s *Service) GetEntitlementValue(ctx context.Context, req *connect.Request[meteryv1.GetEntitlementValueRequest]) (*connect.Response[meteryv1.GetEntitlementValueResponse], error) {
@@ -134,5 +185,43 @@ func (s *Service) GetEntitlementValue(ctx context.Context, req *connect.Request[
 }
 
 func (s *Service) ResetEntitlement(ctx context.Context, req *connect.Request[meteryv1.ResetEntitlementRequest]) (*connect.Response[meteryv1.ResetEntitlementResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+	c, err := s.store.GetCustomer(ctx, req.Msg.CustomerIdOrKey)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("customer not found"))
+	}
+	f, err := s.store.GetFeature(ctx, req.Msg.FeatureIdOrSlug)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("feature not found"))
+	}
+	e, err := s.store.GetEntitlement(ctx, c.ID, f.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("entitlement not found"))
+	}
+	at := time.Now().UTC().Truncate(time.Second)
+	if req.Msg.At != nil {
+		at = req.Msg.At.AsTime()
+	}
+	if err := s.store.ResetEntitlement(ctx, e.ID, at); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&meteryv1.ResetEntitlementResponse{}), nil
+}
+
+func entitlementToProto(e *store.EntitlementRow, customerKey, featureSlug string) *meteryv1.Entitlement {
+	r := &meteryv1.Entitlement{
+		Id:          e.ID,
+		CustomerKey: customerKey,
+		FeatureSlug: featureSlug,
+		CreatedAt:   timestamppb.New(e.CreatedAt),
+	}
+	if e.UsagePeriodDuration != nil {
+		r.UsagePeriod = &meteryv1.Period{Duration: *e.UsagePeriodDuration}
+		if e.UsagePeriodAnchor != nil {
+			r.UsagePeriod.Anchor = timestamppb.New(*e.UsagePeriodAnchor)
+		}
+	}
+	if e.DeletedAt != nil {
+		r.DeletedAt = timestamppb.New(*e.DeletedAt)
+	}
+	return r
 }

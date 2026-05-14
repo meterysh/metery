@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+
 func (s *Service) CreateMeter(ctx context.Context, req *connect.Request[meteryv1.CreateMeterRequest]) (*connect.Response[meteryv1.CreateMeterResponse], error) {
 	var vpPtr *string
 	if req.Msg.ValueProperty != "" {
@@ -48,13 +49,54 @@ func (s *Service) CreateMeter(ctx context.Context, req *connect.Request[meteryv1
 }
 
 func (s *Service) GetMeter(ctx context.Context, req *connect.Request[meteryv1.GetMeterRequest]) (*connect.Response[meteryv1.GetMeterResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+	m, err := s.store.GetMeter(ctx, req.Msg.IdOrSlug)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("meter not found"))
+	}
+	return connect.NewResponse(&meteryv1.GetMeterResponse{Meter: meterToProto(m)}), nil
 }
 
 func (s *Service) ListMeters(ctx context.Context, req *connect.Request[meteryv1.ListMetersRequest]) (*connect.Response[meteryv1.ListMetersResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+	limit := 100
+	if req.Msg.Limit != nil {
+		limit = int(*req.Msg.Limit)
+	}
+	after := ""
+	if req.Msg.After != nil {
+		after = *req.Msg.After
+	}
+	ms, err := s.store.ListMeters(ctx, req.Msg.IncludeArchived, limit, after)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	res := make([]*meteryv1.Meter, len(ms))
+	for i := range ms {
+		res[i] = meterToProto(&ms[i])
+	}
+	return connect.NewResponse(&meteryv1.ListMetersResponse{Meters: res}), nil
 }
 
 func (s *Service) ArchiveMeter(ctx context.Context, req *connect.Request[meteryv1.ArchiveMeterRequest]) (*connect.Response[meteryv1.ArchiveMeterResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+	if err := s.store.ArchiveMeter(ctx, req.Msg.IdOrSlug); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&meteryv1.ArchiveMeterResponse{}), nil
+}
+
+func meterToProto(m *store.Meter) *meteryv1.Meter {
+	r := &meteryv1.Meter{
+		Id:          m.ID,
+		Slug:        m.Slug,
+		Name:        m.Name,
+		Aggregation: m.Aggregation,
+		EventType:   m.EventType,
+		CreatedAt:   timestamppb.New(m.CreatedAt),
+	}
+	if m.ValueProperty != nil {
+		r.ValueProperty = *m.ValueProperty
+	}
+	if m.ArchivedAt != nil {
+		r.ArchivedAt = timestamppb.New(*m.ArchivedAt)
+	}
+	return r
 }

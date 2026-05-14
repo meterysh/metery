@@ -1,6 +1,6 @@
 # Metery — Agent guide
 
-Metery is a usage-billing / entitlements backend (OpenMeter-style). v0
+Metery is a usage-billing / entitlements backend. v0
 exposes ledger primitives (customers, meters, features, entitlements,
 grants, raw usage events) over ConnectRPC.
 

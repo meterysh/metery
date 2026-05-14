@@ -6,7 +6,7 @@ Last updated: 2026-05-07
 
 ## 1. Overview
 
-Metery is a usage-billing / entitlements backend in the spirit of OpenMeter.
+Metery is a usage-billing / entitlements backend.
 Integrated apps ask Metery two questions:
 
 1. **Can this customer perform this action?** (entitlement check)
@@ -35,7 +35,7 @@ and/or period resets.
   entitlements or ingesting events. Dual ID: server-generated `id`
   (ULID, lowercase Crockford base32) for our stable internal handle;
   caller-assigned `key` (opaque) for natural references. Matches the
-  OpenMeter / Lago / Orb / Stripe convention.
+  common usage-billing convention.
 - **Meters** define server-side aggregation from raw events:
   `aggregation` (`count` / `sum` / `avg` / `min` / `max` / `unique_count`),
   `event_type` filter, optional `value_property` JSON path.
@@ -126,12 +126,9 @@ balance(T) = Σ active_grant_amount(T)  −  Σ usage_in_current_period(T)
 with grants consumed in priority order (lower priority number burns first),
 ties broken by `effective_at`.
 
-## 5. OpenMeter parity: grants & resets
+## 5. Grants & resets
 
-This is the part the user asked about explicitly. Metery v0 mirrors
-OpenMeter's grant/reset model so that we can later integrate or migrate.
-
-**Grant fields (OpenMeter-aligned):**
+**Grant fields:**
 
 - `amount` — credits granted.
 - `priority` — burn order; lower = consumed first. Default `100`.

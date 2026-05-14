@@ -88,11 +88,69 @@ func (s *Service) CreateGrant(ctx context.Context, req *connect.Request[meteryv1
 }
 
 func (s *Service) ListGrants(ctx context.Context, req *connect.Request[meteryv1.ListGrantsRequest]) (*connect.Response[meteryv1.ListGrantsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+	c, err := s.store.GetCustomer(ctx, req.Msg.CustomerIdOrKey)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("customer not found"))
+	}
+	f, err := s.store.GetFeature(ctx, req.Msg.FeatureIdOrSlug)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("feature not found"))
+	}
+	e, err := s.store.GetEntitlement(ctx, c.ID, f.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("entitlement not found"))
+	}
+	limit := 100
+	if req.Msg.Limit != nil {
+		limit = int(*req.Msg.Limit)
+	}
+	after := ""
+	if req.Msg.After != nil {
+		after = *req.Msg.After
+	}
+	gs, err := s.store.ListGrants(ctx, e.ID, req.Msg.IncludeVoided, limit, after)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	res := make([]*meteryv1.Grant, len(gs))
+	for i := range gs {
+		res[i] = grantRowToProto(&gs[i])
+	}
+	return connect.NewResponse(&meteryv1.ListGrantsResponse{Grants: res}), nil
 }
 
 func (s *Service) VoidGrant(ctx context.Context, req *connect.Request[meteryv1.VoidGrantRequest]) (*connect.Response[meteryv1.VoidGrantResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+	if err := s.store.VoidGrant(ctx, req.Msg.Id); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&meteryv1.VoidGrantResponse{}), nil
+}
+
+func grantRowToProto(g *store.GrantRow) *meteryv1.Grant {
+	r := &meteryv1.Grant{
+		Id:            g.ID,
+		EntitlementId: g.EntitlementID,
+		Amount:        g.Amount,
+		Priority:      g.Priority,
+		EffectiveAt:   timestamppb.New(g.EffectiveAt),
+		CreatedAt:     timestamppb.New(g.CreatedAt),
+	}
+	if g.ExpiresAt != nil {
+		r.ExpiresAt = timestamppb.New(*g.ExpiresAt)
+	}
+	if g.VoidedAt != nil {
+		r.VoidedAt = timestamppb.New(*g.VoidedAt)
+	}
+	if g.RecurrenceInterval != nil {
+		r.Recurrence = &meteryv1.Recurrence{Interval: *g.RecurrenceInterval}
+		if g.RecurrenceAnchor != nil {
+			r.Recurrence.Anchor = timestamppb.New(*g.RecurrenceAnchor)
+		}
+	}
+	if g.RolloverMax != nil && g.RolloverType != nil {
+		r.Rollover = &meteryv1.Rollover{MaxAmount: *g.RolloverMax, Type: *g.RolloverType}
+	}
+	return r
 }
 
 func shiftTime(t time.Time, d *duration.Duration) time.Time {
