@@ -257,3 +257,90 @@ func (s *Store) GetLatestChildGrant(ctx context.Context, parentID string) (*Gran
 	}
 	return &row, nil
 }
+
+func (s *Store) ListMeters(ctx context.Context, includeArchived bool, limit int, after string) ([]Meter, error) {
+	var q string
+	if includeArchived {
+		q = `SELECT * FROM meters WHERE id > ? ORDER BY id ASC LIMIT ?`
+	} else {
+		q = `SELECT * FROM meters WHERE id > ? AND archived_at IS NULL ORDER BY id ASC LIMIT ?`
+	}
+	var ms []Meter
+	err := s.db.SelectContext(ctx, &ms, s.db.Rebind(q), after, limit)
+	return ms, err
+}
+
+func (s *Store) ArchiveMeter(ctx context.Context, idOrSlug string) error {
+	q := `UPDATE meters SET archived_at = ? WHERE (id = ? OR slug = ?) AND archived_at IS NULL`
+	_, err := s.db.ExecContext(ctx, s.db.Rebind(q), time.Now().UTC().Truncate(time.Second), idOrSlug, idOrSlug)
+	return err
+}
+
+func (s *Store) ListFeatures(ctx context.Context, includeArchived bool, limit int, after string) ([]Feature, error) {
+	var q string
+	if includeArchived {
+		q = `SELECT * FROM features WHERE id > ? ORDER BY id ASC LIMIT ?`
+	} else {
+		q = `SELECT * FROM features WHERE id > ? AND archived_at IS NULL ORDER BY id ASC LIMIT ?`
+	}
+	var fs []Feature
+	err := s.db.SelectContext(ctx, &fs, s.db.Rebind(q), after, limit)
+	return fs, err
+}
+
+func (s *Store) ArchiveFeature(ctx context.Context, idOrSlug string) error {
+	q := `UPDATE features SET archived_at = ? WHERE (id = ? OR slug = ?) AND archived_at IS NULL`
+	_, err := s.db.ExecContext(ctx, s.db.Rebind(q), time.Now().UTC().Truncate(time.Second), idOrSlug, idOrSlug)
+	return err
+}
+
+func (s *Store) ListEntitlements(ctx context.Context, customerID string, limit int, after string) ([]EntitlementRow, error) {
+	q := `SELECT * FROM entitlements WHERE customer_id = ? AND id > ? AND deleted_at IS NULL ORDER BY id ASC LIMIT ?`
+	var es []EntitlementRow
+	err := s.db.SelectContext(ctx, &es, s.db.Rebind(q), customerID, after, limit)
+	return es, err
+}
+
+func (s *Store) DeleteEntitlement(ctx context.Context, customerID, featureID string) error {
+	q := `UPDATE entitlements SET deleted_at = ? WHERE customer_id = ? AND feature_id = ? AND deleted_at IS NULL`
+	_, err := s.db.ExecContext(ctx, s.db.Rebind(q), time.Now().UTC().Truncate(time.Second), customerID, featureID)
+	return err
+}
+
+func (s *Store) ResetEntitlement(ctx context.Context, entitlementID string, at time.Time) error {
+	q := `UPDATE entitlements SET usage_period_anchor = ? WHERE id = ?`
+	_, err := s.db.ExecContext(ctx, s.db.Rebind(q), at, entitlementID)
+	return err
+}
+
+func (s *Store) ListGrants(ctx context.Context, entitlementID string, includeVoided bool, limit int, after string) ([]GrantRow, error) {
+	var q string
+	if includeVoided {
+		q = `SELECT * FROM grants WHERE entitlement_id = ? AND id > ? ORDER BY id ASC LIMIT ?`
+	} else {
+		q = `SELECT * FROM grants WHERE entitlement_id = ? AND id > ? AND voided_at IS NULL ORDER BY id ASC LIMIT ?`
+	}
+	var gs []GrantRow
+	err := s.db.SelectContext(ctx, &gs, s.db.Rebind(q), entitlementID, after, limit)
+	return gs, err
+}
+
+func (s *Store) VoidGrant(ctx context.Context, id string) error {
+	q := `UPDATE grants SET voided_at = ? WHERE id = ? AND voided_at IS NULL`
+	_, err := s.db.ExecContext(ctx, s.db.Rebind(q), time.Now().UTC().Truncate(time.Second), id)
+	return err
+}
+
+func (s *Store) UpdateCustomer(ctx context.Context, idOrKey string, name string) (*Customer, error) {
+	q := `UPDATE customers SET name = ? WHERE (id = ? OR key = ?) AND deactivated_at IS NULL`
+	if _, err := s.db.ExecContext(ctx, s.db.Rebind(q), name, idOrKey, idOrKey); err != nil {
+		return nil, err
+	}
+	return s.GetCustomer(ctx, idOrKey)
+}
+
+func (s *Store) DeactivateCustomer(ctx context.Context, idOrKey string) error {
+	q := `UPDATE customers SET deactivated_at = ? WHERE (id = ? OR key = ?) AND deactivated_at IS NULL`
+	_, err := s.db.ExecContext(ctx, s.db.Rebind(q), time.Now().UTC().Truncate(time.Second), idOrKey, idOrKey)
+	return err
+}
