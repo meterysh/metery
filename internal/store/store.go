@@ -3,6 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -198,43 +201,65 @@ func (s *Store) IngestEvent(ctx context.Context, e *Event) error {
 	return err
 }
 
-// FetchUsage aggregates usage from raw events.
-// WARNING: This implementation uses SQLite's json_extract. Postgres needs ->> operator.
-// Since v0 testing is primarily SQLite, we'll write the SQLite syntax and conditionally execute Postgres.
 func (s *Store) FetchUsage(ctx context.Context, customerKey string, m *Meter, from, to time.Time) (int64, error) {
-	var q string
-
 	if m.Aggregation == "count" {
-		q = `SELECT COALESCE(COUNT(*), 0) FROM usage_events WHERE customer = ? AND type = ? AND time >= ? AND time < ?`
+		q := `SELECT COALESCE(COUNT(*), 0) FROM usage_events WHERE customer = ? AND type = ? AND time >= ? AND time < ?`
 		var usage int64
 		err := s.db.GetContext(ctx, &usage, s.db.Rebind(q), customerKey, m.EventType, from, to)
 		return usage, err
 	}
 
 	if m.ValueProperty == nil {
-		return 0, nil // Invalid setup
+		return 0, fmt.Errorf("meter %s: aggregation %q requires value_property", m.Slug, m.Aggregation)
 	}
 
-	valProp := *m.ValueProperty
+	var q, valParam string
 
-	// Driver-specific JSON extraction
 	if s.db.DriverName() == "sqlite" {
-		valProp = "$." + valProp
-		if m.Aggregation == "sum" {
-			q = `SELECT COALESCE(SUM(CAST(json_extract(payload, ?) AS NUMERIC)), 0) FROM usage_events WHERE customer = ? AND type = ? AND time >= ? AND time < ?`
+		// SQLite JSON path: "a.b" → "$.a.b"
+		valParam = "$." + *m.ValueProperty
+		extract := "json_extract(payload, ?)"
+		if m.Aggregation == "unique_count" {
+			q = fmt.Sprintf(`SELECT COALESCE(COUNT(DISTINCT %s), 0) FROM usage_events WHERE customer = ? AND type = ? AND time >= ? AND time < ?`, extract)
+		} else {
+			fn, err := sqlAggFunc(m.Aggregation)
+			if err != nil {
+				return 0, err
+			}
+			q = fmt.Sprintf(`SELECT COALESCE(%s(CAST(%s AS NUMERIC)), 0) FROM usage_events WHERE customer = ? AND type = ? AND time >= ? AND time < ?`, fn, extract)
 		}
 	} else {
-		// postgres
-		if m.Aggregation == "sum" {
-			// jsonb extraction. Since we need path, it's more complex. Assumes valProp is just the key for now.
-			// e.g. $.tokens -> let's assume it's just 'tokens' for postgres simpleness in this scaffold.
-			q = `SELECT COALESCE(SUM(CAST(payload->>? AS NUMERIC)), 0) FROM usage_events WHERE customer = ? AND type = ? AND time >= ? AND time < ?`
+		// Postgres JSONB path: "a.b" → "{a,b}" for the #>> operator.
+		valParam = "{" + strings.ReplaceAll(*m.ValueProperty, ".", ",") + "}"
+		extract := "(payload #>> ?::text[])"
+		if m.Aggregation == "unique_count" {
+			q = fmt.Sprintf(`SELECT COALESCE(COUNT(DISTINCT %s), 0) FROM usage_events WHERE customer = ? AND type = ? AND time >= ? AND time < ?`, extract)
+		} else {
+			fn, err := sqlAggFunc(m.Aggregation)
+			if err != nil {
+				return 0, err
+			}
+			q = fmt.Sprintf(`SELECT COALESCE(%s((%s)::numeric), 0) FROM usage_events WHERE customer = ? AND type = ? AND time >= ? AND time < ?`, fn, extract)
 		}
 	}
 
-	var usage float64 // Use float64 to safely cast SQL numeric then convert to int64
-	err := s.db.GetContext(ctx, &usage, s.db.Rebind(q), valProp, customerKey, m.EventType, from, to)
+	var usage float64
+	err := s.db.GetContext(ctx, &usage, s.db.Rebind(q), valParam, customerKey, m.EventType, from, to)
 	return int64(usage), err
+}
+
+func sqlAggFunc(agg string) (string, error) {
+	switch agg {
+	case "sum":
+		return "SUM", nil
+	case "avg":
+		return "AVG", nil
+	case "min":
+		return "MIN", nil
+	case "max":
+		return "MAX", nil
+	}
+	return "", fmt.Errorf("unsupported aggregation %q", agg)
 }
 
 func NewULID() string {
@@ -343,4 +368,54 @@ func (s *Store) DeactivateCustomer(ctx context.Context, idOrKey string) error {
 	q := `UPDATE customers SET deactivated_at = ? WHERE (id = ? OR key = ?) AND deactivated_at IS NULL`
 	_, err := s.db.ExecContext(ctx, s.db.Rebind(q), time.Now().UTC().Truncate(time.Second), idOrKey, idOrKey)
 	return err
+}
+
+type SnapshotRow struct {
+	EntitlementID string    `db:"entitlement_id"`
+	AsOf          time.Time `db:"as_of"`
+	Balance       int64     `db:"balance"`
+	PerGrantState string    `db:"per_grant_state"` // JSON: [{grant_id, remaining}]
+}
+
+// GetLatestSnapshot returns the most recent snapshot at or before before, or nil if none exists.
+func (s *Store) GetLatestSnapshot(ctx context.Context, entitlementID string, before time.Time) (*ledger.Snapshot, error) {
+	q := `SELECT * FROM balance_snapshots WHERE entitlement_id = ? AND as_of <= ? ORDER BY as_of DESC LIMIT 1`
+	var row SnapshotRow
+	err := s.db.GetContext(ctx, &row, s.db.Rebind(q), entitlementID, before)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var state []ledger.GrantState
+	if err := json.Unmarshal([]byte(row.PerGrantState), &state); err != nil {
+		return nil, err
+	}
+	return &ledger.Snapshot{
+		AsOf:          row.AsOf,
+		Balance:       row.Balance,
+		PerGrantState: state,
+	}, nil
+}
+
+// SaveSnapshots persists snapshots at period boundaries. Concurrent duplicate writes are silently ignored.
+func (s *Store) SaveSnapshots(ctx context.Context, snaps []ledger.Snapshot, entitlementID string) error {
+	for _, snap := range snaps {
+		b, err := json.Marshal(snap.PerGrantState)
+		if err != nil {
+			return err
+		}
+		row := SnapshotRow{
+			EntitlementID: entitlementID,
+			AsOf:          snap.AsOf,
+			Balance:       snap.Balance,
+			PerGrantState: string(b),
+		}
+		q := `INSERT INTO balance_snapshots (entitlement_id, as_of, balance, per_grant_state) VALUES (:entitlement_id, :as_of, :balance, :per_grant_state) ON CONFLICT (entitlement_id, as_of) DO NOTHING`
+		if _, err := s.db.NamedExecContext(ctx, q, row); err != nil {
+			return err
+		}
+	}
+	return nil
 }

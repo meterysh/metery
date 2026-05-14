@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"time"
 
 	"connectrpc.com/connect"
@@ -164,7 +165,18 @@ func (s *Service) GetEntitlementValue(ctx context.Context, req *connect.Request[
 		CreatedAt:           e.CreatedAt,
 	}
 
-	res := ledger.CalculateBalance(evalTime, domainEnt, grants, fetchUsage)
+	seed, _ := s.store.GetLatestSnapshot(ctx, e.ID, evalTime)
+
+	res, newSnaps := ledger.CalculateBalance(evalTime, domainEnt, grants, fetchUsage, seed)
+
+	if len(newSnaps) > 0 {
+		entID := e.ID
+		go func() {
+			if err := s.store.SaveSnapshots(context.Background(), newSnaps, entID); err != nil {
+				log.Printf("save balance snapshots for %s: %v", entID, err)
+			}
+		}()
+	}
 
 	respValue := &meteryv1.EntitlementValue{
 		HasAccess: res.HasAccess,

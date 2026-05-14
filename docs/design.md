@@ -620,6 +620,13 @@ period of events.
   approach: a periodic worker scans `grants WHERE recurrence_interval IS NOT
   NULL` and emits the next child grant when due. Idempotent via
   `(parent_grant_id, effective_at)` uniqueness.
+- **Recurrence catchup on restart**: the worker ticks every minute and
+  emits one child grant per tick. After a downtime spanning N missed
+  periods, it takes N minutes to fully catch up. During that window,
+  balance reads for affected entitlements are understated — the missing
+  grants haven't materialised yet. Acceptable for v0. A startup sweep
+  (emit all overdue children in a single pass before the ticker starts)
+  would close this gap if needed.
 
 ## 10. Architecture (one paragraph)
 
@@ -639,9 +646,11 @@ no caches in v0.
 
 ## 11. Open questions
 
-1. **Hot-path latency target?** Drives whether we need `balance_snapshots`
-   from day one. v0 default: recompute on every read, add snapshots once
-   read traffic justifies. Pick a target before tuning.
+1. **Hot-path latency target?** `balance_snapshots` are implemented:
+   each read seeds from the most recent period-boundary snapshot and only
+   replays events within the current period. Pick a concrete p99 target
+   before adding further optimisations (covering indexes, materialized
+   rollups).
 2. **Subscriptions: v1+ scope, deferred from v0.** Long-term goal is a
    first-class `Plan` + `Subscription` concept in Metery, with sync
    adapters to Stripe (and others). v0 stays at the primitive level —

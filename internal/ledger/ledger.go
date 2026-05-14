@@ -44,22 +44,39 @@ type ActiveGrant struct {
 	Remaining int64
 }
 
+// GrantState is one entry in a Snapshot's per-grant remaining amounts.
+type GrantState struct {
+	GrantID   string `json:"grant_id"`
+	Remaining int64  `json:"remaining"`
+}
+
+// Snapshot is the ledger state at a period boundary. Used to seed balance
+// computation so only the current period's events need to be replayed.
+type Snapshot struct {
+	AsOf          time.Time    `json:"as_of"`
+	Balance       int64        `json:"balance"`
+	PerGrantState []GrantState `json:"per_grant_state"`
+}
+
 // FetchUsageFn abstracts how usage is fetched for a specific time window.
 type FetchUsageFn func(from, to time.Time) int64
 
-// CalculateBalance computes the current ledger balance and state for an entitlement at time T.
+// CalculateBalance computes the current ledger balance and state for an
+// entitlement at time T. seed, if non-nil, must be at a period boundary;
+// periods before it are skipped and per-grant remaining is seeded from it.
+// Returns any new snapshots captured at period boundaries during computation.
 func CalculateBalance(
 	t time.Time,
 	ent Entitlement,
 	grants []Grant,
 	fetchUsage FetchUsageFn,
-) BalanceResult {
+	seed *Snapshot,
+) (BalanceResult, []Snapshot) {
 	if ent.UsagePeriodDuration == nil {
-		// No reset periods: aggregate from the beginning of time
-		return calculateStatelessBalance(t, ent, grants, fetchUsage(ent.CreatedAt, t))
+		res := calculateStatelessBalance(t, ent, grants, fetchUsage(ent.CreatedAt, t))
+		return res, nil
 	}
 
-	// We have periods. We must compute from anchor (or CreatedAt) up to t.
 	anchor := ent.CreatedAt
 	if ent.UsagePeriodAnchor != nil {
 		anchor = *ent.UsagePeriodAnchor
@@ -67,45 +84,75 @@ func CalculateBalance(
 
 	dur, err := duration.Parse(*ent.UsagePeriodDuration)
 	if err != nil {
-		// Fallback to stateless if parsing fails (in reality, should be validated at creation)
-		return calculateStatelessBalance(t, ent, grants, fetchUsage(ent.CreatedAt, t))
+		res := calculateStatelessBalance(t, ent, grants, fetchUsage(ent.CreatedAt, t))
+		return res, nil
 	}
 
-	// Find all periods from anchor to t
 	periods := buildPeriods(anchor, dur, t)
 	if len(periods) == 0 {
-		return calculateStatelessBalance(t, ent, grants, fetchUsage(ent.CreatedAt, t))
+		res := calculateStatelessBalance(t, ent, grants, fetchUsage(ent.CreatedAt, t))
+		return res, nil
 	}
 
+	// Find starting period and seed active grants from snapshot if provided.
+	startIdx := 0
 	var active []*ActiveGrant
+	seededGrantIDs := map[string]struct{}{}
+
+	if seed != nil {
+		found := false
+		for i, p := range periods {
+			if p.From.Equal(seed.AsOf) {
+				startIdx = i
+				found = true
+				break
+			}
+		}
+		if found {
+			grantMap := make(map[string]Grant, len(grants))
+			for _, g := range grants {
+				grantMap[g.ID] = g
+			}
+			for _, gs := range seed.PerGrantState {
+				if g, ok := grantMap[gs.GrantID]; ok {
+					active = append(active, &ActiveGrant{Grant: g, Remaining: gs.Remaining})
+					seededGrantIDs[gs.GrantID] = struct{}{}
+				}
+			}
+		}
+	}
+
+	var newSnapshots []Snapshot
 	var usage int64
 	var lastOverage int64
 
-	for i, p := range periods {
+	for i := startIdx; i < len(periods); i++ {
+		p := periods[i]
 		isCurrent := i == len(periods)-1
 
-		// Add new grants that become effective in this period
+		// Add grants effective in this period, or before the first evaluated period.
 		for _, g := range grants {
-			if !g.EffectiveAt.Before(p.From) && g.EffectiveAt.Before(p.To) {
-				active = append(active, &ActiveGrant{Grant: g, Remaining: g.Amount})
+			if _, seeded := seededGrantIDs[g.ID]; seeded {
+				continue
 			}
-			// Also include grants that were effective before the FIRST period we evaluate
-			if i == 0 && g.EffectiveAt.Before(p.From) {
+			inPeriod := !g.EffectiveAt.Before(p.From) && g.EffectiveAt.Before(p.To)
+			preFirst := i == startIdx && g.EffectiveAt.Before(p.From)
+			if inPeriod || preFirst {
 				active = append(active, &ActiveGrant{Grant: g, Remaining: g.Amount})
+				seededGrantIDs[g.ID] = struct{}{}
 			}
 		}
 
-		// Prune expired grants
+		// Prune expired grants.
 		filtered := make([]*ActiveGrant, 0, len(active))
 		for _, ag := range active {
 			if ag.ExpiresAt != nil && !ag.ExpiresAt.After(p.From) {
-				continue // expired before or at the start of this period
+				continue
 			}
 			filtered = append(filtered, ag)
 		}
 		active = filtered
 
-		// Sort active grants by Priority (asc), EffectiveAt (asc)
 		sort.Slice(active, func(i, j int) bool {
 			if active[i].Priority != active[j].Priority {
 				return active[i].Priority < active[j].Priority
@@ -113,14 +160,12 @@ func CalculateBalance(
 			return active[i].EffectiveAt.Before(active[j].EffectiveAt)
 		})
 
-		// Fetch usage for this period
 		endOfFetch := p.To
 		if isCurrent {
 			endOfFetch = t
 		}
 		usage = fetchUsage(p.From, endOfFetch)
 
-		// Deduct usage from grants
 		remainingUsage := usage
 		for _, ag := range active {
 			if remainingUsage <= 0 {
@@ -137,23 +182,19 @@ func CalculateBalance(
 
 		lastOverage = remainingUsage
 
-		// Rollover for the next period
 		if !isCurrent {
 			rolledOver := make([]*ActiveGrant, 0, len(active))
 			for _, ag := range active {
 				if ag.Remaining == 0 {
-					continue // fully consumed
+					continue
 				}
 				if ag.ExpiresAt != nil && !ag.ExpiresAt.After(p.To) {
-					continue // expires exactly at or before period end
+					continue
 				}
-
 				if ag.RolloverMax != nil {
 					maxRollover := *ag.RolloverMax
-					if ag.RolloverType == "original" {
-						if ag.Amount < maxRollover {
-							maxRollover = ag.Amount
-						}
+					if ag.RolloverType == "original" && ag.Amount < maxRollover {
+						maxRollover = ag.Amount
 					}
 					if ag.Remaining > maxRollover {
 						ag.Remaining = maxRollover
@@ -164,10 +205,20 @@ func CalculateBalance(
 				}
 			}
 			active = rolledOver
+
+			// Capture snapshot at the period boundary (after rollover).
+			snap := Snapshot{AsOf: p.To}
+			for _, ag := range active {
+				snap.PerGrantState = append(snap.PerGrantState, GrantState{
+					GrantID:   ag.ID,
+					Remaining: ag.Remaining,
+				})
+				snap.Balance += ag.Remaining
+			}
+			newSnapshots = append(newSnapshots, snap)
 		}
 	}
 
-	// Calculate final balance from active grants
 	var totalBalance int64
 	for _, ag := range active {
 		if ag.ExpiresAt == nil || ag.ExpiresAt.After(t) {
@@ -176,7 +227,6 @@ func CalculateBalance(
 	}
 
 	currentPeriod := periods[len(periods)-1]
-
 	return BalanceResult{
 		HasAccess: totalBalance > 0,
 		Balance:   totalBalance,
@@ -184,7 +234,7 @@ func CalculateBalance(
 		Overage:   lastOverage,
 		Period:    &currentPeriod,
 		LastReset: &currentPeriod.From,
-	}
+	}, newSnapshots
 }
 
 func calculateStatelessBalance(t time.Time, ent Entitlement, grants []Grant, usage int64) BalanceResult {
