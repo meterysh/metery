@@ -5,3 +5,5 @@ gen/
 .env
 
 *.db
+
+openapi.yaml
