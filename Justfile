@@ -1,20 +1,31 @@
-proto: proto-lint
+default:
+    @just --list
+
+# Run the server
+run:
+    go run ./cmd/metery serve --migrate
+
+# Build the binary
+build:
+    go build -o metery ./cmd/metery
+
+# Generate proto code
+generate:
     buf generate
 
-proto-lint:
+# Run database migrations
+migrate:
+    go run ./cmd/metery migrate
+
+# Tidy dependencies
+tidy:
+    go mod tidy
+
+# Lint proto files
+lint:
     buf lint
 
-proto-format:
-    buf format -w
-
-proto-breaking:
-    buf breaking --against '.git#branch=main'
-
-test:
-    go test -v ./...
-
-build:
-    go build ./cmd/metery
-
-run: build
-    ./metery serve --migrate
+# Clean build artifacts
+clean:
+    rm -f metery
+    rm -f *.db *.db-journal *.db-wal *.db-shm
