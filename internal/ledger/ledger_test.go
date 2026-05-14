@@ -41,7 +41,7 @@ func TestCalculateBalance_Stateless(t *testing.T) {
 	}
 
 	evalTime := mustParseTime("2026-01-10T00:00:00Z")
-	res := CalculateBalance(evalTime, ent, grants, fetchUsage)
+	res, _ := CalculateBalance(evalTime, ent, grants, fetchUsage, nil)
 
 	// total grants = 1500. usage = 300.
 	// g2 (500) burns first because of priority 10.
@@ -89,7 +89,7 @@ func TestCalculateBalance_WithPeriodsAndRollover(t *testing.T) {
 	}
 
 	evalTime := mustParseTime("2026-02-15T00:00:00Z")
-	res := CalculateBalance(evalTime, ent, grants, fetchUsage)
+	res, _ := CalculateBalance(evalTime, ent, grants, fetchUsage, nil)
 
 	// Explanation:
 	// Jan 1: grant = 100

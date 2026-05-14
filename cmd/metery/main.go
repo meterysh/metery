@@ -54,13 +54,17 @@ func initDB(url string) *sql.DB {
 func runMigrations(db *sql.DB, url string) {
 	driver := getDriver(url)
 	goose.SetBaseFS(migrations.FS)
-	if err := goose.SetDialect(driver); err != nil {
+	dialect := driver
+	if driver == "pgx" {
+		dialect = "postgres"
+	}
+	if err := goose.SetDialect(dialect); err != nil {
 		log.Fatalf("failed to set goose dialect: %v", err)
 	}
 
 	dir := "sqlite"
 	if driver == "pgx" {
-		dir = "pgx"
+		dir = "postgres"
 	}
 
 	if err := goose.Up(db, dir); err != nil {
