@@ -615,10 +615,10 @@ current period only.
   event insert.
 - **Period rollover** is computed on read; we do not need a scheduled job
   to "advance" entitlements.
-- **Recurring grant emission**, however, *does* need a scheduler because
-  new grants must materialize as rows so they show up in queries. v0
-  approach: a periodic worker scans `grants WHERE recurrence_interval IS NOT
-  NULL` and emits the next child grant when due. Idempotent via
+- **Recurring grant emission**, however, *does* need a background worker
+  because new grants must materialize as rows so they show up in queries.
+  v0 approach: a periodic worker scans `grants WHERE recurrence_interval IS
+  NOT NULL` and emits the next child grant when due. Idempotent via
   `(parent_grant_id, effective_at)` uniqueness.
 - **Recurrence catchup on restart**: the worker ticks every minute and
   emits one child grant per tick. After a downtime spanning N missed

@@ -29,7 +29,7 @@ import (
 	"github.com/meterysh/metery/internal/service"
 	"github.com/meterysh/metery/internal/store"
 	"github.com/meterysh/metery/internal/store/migrations"
-	"github.com/meterysh/metery/internal/scheduler"
+	"github.com/meterysh/metery/internal/worker"
 )
 
 var Version = "dev"
@@ -146,8 +146,8 @@ func main() {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("ok"))
 			})
-			mux.HandleFunc("/scheduler/run", func(w http.ResponseWriter, r *http.Request) {
-				scheduler.RunOnce(r.Context(), st)
+			mux.HandleFunc("/worker/run", func(w http.ResponseWriter, r *http.Request) {
+				worker.RunOnce(r.Context(), st)
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("{\"status\":\"ok\"}"))
 			})
@@ -206,19 +206,19 @@ func main() {
 		},
 	}
 
-	schedulerCmd := &cobra.Command{
-		Use:   "scheduler",
-		Short: "Run the recurrence scheduler",
+	workerCmd := &cobra.Command{
+		Use:   "worker",
+		Short: "Run the recurrence worker",
 		Run: func(cmd *cobra.Command, args []string) {
 			db := initDB(dbUrl)
 			defer db.Close()
 			driver := getDriver(dbUrl)
 			st := store.New(db, driver)
 
-			log.Println("Starting recurrence scheduler...")
+			log.Println("Starting recurrence worker...")
 			ctx, cancel := context.WithCancel(context.Background())
 
-			go scheduler.RunRecurrenceWorker(ctx, st)
+			go worker.RunRecurrenceWorker(ctx, st)
 
 			quit := make(chan os.Signal, 1)
 			signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -236,7 +236,7 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(serveCmd, migrateCmd, schedulerCmd, versionCmd)
+	rootCmd.AddCommand(serveCmd, migrateCmd, workerCmd, versionCmd)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
