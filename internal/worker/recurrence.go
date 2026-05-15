@@ -1,4 +1,4 @@
-package scheduler
+package worker
 
 import (
 	"context"
@@ -18,7 +18,7 @@ func RunRecurrenceWorker(ctx context.Context, st *store.Store) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			log.Println("scheduler: tick — running recurrence pass")
+			log.Println("worker: tick — running recurrence pass")
 			processRecurrence(ctx, st)
 		}
 	}
@@ -27,11 +27,11 @@ func RunRecurrenceWorker(ctx context.Context, st *store.Store) {
 func processRecurrence(ctx context.Context, st *store.Store) {
 	parents, err := st.ListRecurringGrants(ctx)
 	if err != nil {
-		log.Printf("scheduler: error listing recurring grants: %v", err)
+		log.Printf("worker: error listing recurring grants: %v", err)
 		return
 	}
 
-	log.Printf("scheduler: evaluating %d recurring grant(s)", len(parents))
+	log.Printf("worker: evaluating %d recurring grant(s)", len(parents))
 
 	now := time.Now().UTC().Truncate(time.Second)
 	emitted, skipped := 0, 0
@@ -39,7 +39,7 @@ func processRecurrence(ctx context.Context, st *store.Store) {
 	for _, p := range parents {
 		dur, err := duration.Parse(*p.RecurrenceInterval)
 		if err != nil {
-			log.Printf("scheduler: skipping grant %s — invalid recurrence interval %q: %v", p.ID, *p.RecurrenceInterval, err)
+			log.Printf("worker: skipping grant %s — invalid recurrence interval %q: %v", p.ID, *p.RecurrenceInterval, err)
 			skipped++
 			continue
 		}
@@ -71,15 +71,15 @@ func processRecurrence(ctx context.Context, st *store.Store) {
 
 			// UNIQUE INDEX (parent_grant_id, effective_at) makes this idempotent.
 			if err := st.CreateGrant(ctx, child); err != nil {
-				log.Printf("scheduler: error creating child grant for parent %s: %v", p.ID, err)
+				log.Printf("worker: error creating child grant for parent %s: %v", p.ID, err)
 			} else {
-				log.Printf("scheduler: emitted grant %s (parent %s, effective %s)", child.ID, p.ID, nextTime.Format(time.RFC3339))
+				log.Printf("worker: emitted grant %s (parent %s, effective %s)", child.ID, p.ID, nextTime.Format(time.RFC3339))
 				emitted++
 			}
 		}
 	}
 
-	log.Printf("scheduler: pass complete — emitted %d, skipped %d", emitted, skipped)
+	log.Printf("worker: pass complete — emitted %d, skipped %d", emitted, skipped)
 }
 
 func shiftTime(t time.Time, d *duration.Duration) time.Time {
