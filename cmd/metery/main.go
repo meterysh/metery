@@ -29,7 +29,7 @@ import (
 	"github.com/meterysh/metery/internal/service"
 	"github.com/meterysh/metery/internal/store"
 	"github.com/meterysh/metery/internal/store/migrations"
-	"github.com/meterysh/metery/internal/worker"
+	"github.com/meterysh/metery/internal/scheduler"
 )
 
 var Version = "dev"
@@ -147,7 +147,7 @@ func main() {
 				w.Write([]byte("ok"))
 			})
 			mux.HandleFunc("/scheduler/run", func(w http.ResponseWriter, r *http.Request) {
-				worker.RunOnce(r.Context(), st)
+				scheduler.RunOnce(r.Context(), st)
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("{\"status\":\"ok\"}"))
 			})
@@ -218,7 +218,7 @@ func main() {
 			log.Println("Starting recurrence scheduler...")
 			ctx, cancel := context.WithCancel(context.Background())
 
-			go worker.RunRecurrenceWorker(ctx, st)
+			go scheduler.RunRecurrenceWorker(ctx, st)
 
 			quit := make(chan os.Signal, 1)
 			signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
