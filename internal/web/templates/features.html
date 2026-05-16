@@ -1,0 +1,31 @@
+{{define "content"}}
+<div class="card">
+  <h2>Features</h2>
+  {{if .Features}}
+  <table class="compact">
+    <thead>
+      <tr>
+        <th>Slug</th>
+        <th>Name</th>
+        <th>Type</th>
+        <th>ID</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Features}}
+      <tr>
+        <td><code>{{.Slug}}</code></td>
+        <td>{{.Name}}</td>
+        <td><span class="badge {{if eq .Type "metered"}}badge-metered{{else}}badge-boolean{{end}}">{{.Type}}</span></td>
+        <td><code>{{.ID}}</code></td>
+        <td>{{.CreatedAt}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="muted">No features yet.</p>
+  {{end}}
+</div>
+{{end}}

@@ -1,0 +1,37 @@
+{{define "content"}}
+<div class="card">
+  <h2>Customers</h2>
+  {{if .Customers}}
+  <table class="compact">
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Name</th>
+        <th>ID</th>
+        <th>Created</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Customers}}
+      <tr>
+        <td><code>{{.Key}}</code></td>
+        <td>{{.Name}}</td>
+        <td><code>{{.ID}}</code></td>
+        <td>{{.CreatedAt}}</td>
+        <td>
+          {{if .Active}}
+          <span class="badge badge-active">active</span>
+          {{else}}
+          <span class="badge badge-inactive">deactivated</span>
+          {{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="muted">No customers yet.</p>
+  {{end}}
+</div>
+{{end}}

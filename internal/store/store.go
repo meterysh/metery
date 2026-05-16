@@ -262,6 +262,37 @@ func sqlAggFunc(agg string) (string, error) {
 	return "", fmt.Errorf("unsupported aggregation %q", agg)
 }
 
+type User struct {
+	ID        string    `db:"id"`
+	GoogleID  string    `db:"google_id"`
+	Email     string    `db:"email"`
+	Name      string    `db:"name"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
+func (s *Store) UpsertUser(ctx context.Context, googleID, email, name string) (*User, error) {
+	q := `INSERT INTO users (id, google_id, email, name, created_at)
+	      VALUES (?, ?, ?, ?, ?)
+	      ON CONFLICT (google_id) DO UPDATE SET email = excluded.email, name = excluded.name`
+	_, err := s.db.ExecContext(ctx, s.db.Rebind(q), NewULID(), googleID, email, name, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	return s.GetUserByGoogleID(ctx, googleID)
+}
+
+func (s *Store) GetUserByID(ctx context.Context, id string) (*User, error) {
+	var u User
+	err := s.db.GetContext(ctx, &u, s.db.Rebind(`SELECT * FROM users WHERE id = ?`), id)
+	return &u, err
+}
+
+func (s *Store) GetUserByGoogleID(ctx context.Context, googleID string) (*User, error) {
+	var u User
+	err := s.db.GetContext(ctx, &u, s.db.Rebind(`SELECT * FROM users WHERE google_id = ?`), googleID)
+	return &u, err
+}
+
 func NewULID() string {
 	return strings.ToLower(ulid.Make().String())
 }

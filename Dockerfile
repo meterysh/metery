@@ -5,6 +5,7 @@ ARG TARGETPLATFORM
 WORKDIR /
 
 COPY ${TARGETPLATFORM}/metery /metery
+COPY public/ /public/
 
 ENTRYPOINT ["/metery"]
 

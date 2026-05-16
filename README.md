@@ -17,10 +17,15 @@ Integrate with your app to check customer access and ingest usage events.
 
 | Variable | Description | Default |
 |---|---|---|
+| `PORT` | Port the HTTP server listens on | `8080` |
 | `DATABASE_URL` | Database connection string (see below) | `file:metery.db` |
+| `SESSION_SECRET` | Secret for signing session cookies (min 32 chars) | `dev-secret-change-me` |
+| `GOOGLE_CLIENT_ID` | Google OAuth2 client ID (for the web dashboard) | required |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth2 client secret | required |
 | `API_KEYS` | Comma-separated list of Bearer tokens for API authentication | required |
 | `HOSTNAME` | Public base URL — injected into the served OpenAPI spec | `http://localhost:8080` |
 | `MIGRATE` | Run migrations on startup when `true` | — |
+| `ALLOWED_DOMAINS` | Comma-separated list of allowed email domains. | — |
 
 ## Database
 
@@ -43,17 +48,27 @@ metery version            # print version
 metery help               # print usage
 ```
 
+## Web dashboard
+
+Opening `/` in a browser shows the admin dashboard. Authentication is via Google OAuth — set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (from Google Cloud Console) and add `<HOSTNAME>/auth/google/callback` as an authorised redirect URI.
+
+Use `ALLOWED_DOMAINS` to restrict access to specific email domains.
+
 ## Authentication
 
 ### API (Bearer token)
 
-All RPC endpoints require `Authorization: Bearer <key>`. 
+All RPC endpoints require `Authorization: Bearer <key>`.
 
 Keys are provisioned at startup via the `API_KEYS` environment variable. A valid key has full administrative access across the platform.
 
 ```bash
 export API_KEYS="mtr_secret1,mtr_secret2"
 ```
+
+### Dashboard (Google OAuth)
+
+Browser sessions are HMAC-signed cookies. Set `SESSION_SECRET` to a random string before deploying; the default is only suitable for local development.
 
 ## Protocols
 
