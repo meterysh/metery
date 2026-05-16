@@ -1,0 +1,23 @@
+{{define "content"}}
+<a class="back-link" href="/features">← Features</a>
+<div class="page-header">
+  <h2>{{.Name}}</h2>
+</div>
+
+<div class="card">
+  <dl class="defs">
+    <dt>Slug</dt><dd><code>{{.Slug}}</code></dd>
+    <dt>ID</dt><dd><code>{{.ID}}</code></dd>
+    <dt>Type</dt><dd><span class="badge {{if eq .Type "metered"}}badge-metered{{else}}badge-boolean{{end}}">{{.Type}}</span></dd>
+    {{if eq .Type "metered"}}
+    <dt>Meter</dt><dd>
+      {{if .MeterSlug}}<a href="/meters/{{.MeterSlug}}"><code>{{.MeterSlug}}</code></a>{{if .MeterName}} <span class="muted">· {{.MeterName}}</span>{{end}}
+      {{else}}<span class="muted">—</span>{{end}}
+    </dd>
+    {{end}}
+    <dt>Created</dt><dd>{{.CreatedAt}}</dd>
+    {{if .Archived}}<dt>Status</dt><dd><span class="badge badge-inactive">archived</span></dd>{{end}}
+    {{if .ArchivedAt}}<dt>Archived</dt><dd>{{.ArchivedAt}}</dd>{{end}}
+  </dl>
+</div>
+{{end}}

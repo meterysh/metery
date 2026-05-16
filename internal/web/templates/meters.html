@@ -1,0 +1,37 @@
+{{define "content"}}
+<div class="page-header">
+  <h2>Meters</h2>
+</div>
+<div class="card">
+  {{if .Meters}}
+  <table class="compact">
+    <thead>
+      <tr>
+        <th>Slug</th>
+        <th>Name</th>
+        <th>Aggregation</th>
+        <th>Event type</th>
+        <th>Value property</th>
+        <th>ID</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Meters}}
+      <tr>
+        <td><a href="/meters/{{.Slug}}"><code>{{.Slug}}</code></a></td>
+        <td>{{.Name}}</td>
+        <td><code>{{.Aggregation}}</code></td>
+        <td><code>{{.EventType}}</code></td>
+        <td>{{if .ValueProperty}}<code>{{.ValueProperty}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
+        <td><code>{{.ID}}</code></td>
+        <td>{{.CreatedAt}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="muted">No meters yet.</p>
+  {{end}}
+</div>
+{{end}}

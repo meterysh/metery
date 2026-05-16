@@ -1,0 +1,45 @@
+{{define "content"}}
+<a class="back-link" href="/meters">← Meters</a>
+<div class="page-header">
+  <h2>{{.Name}}</h2>
+</div>
+
+<div class="card">
+  <dl class="defs">
+    <dt>Slug</dt><dd><code>{{.Slug}}</code></dd>
+    <dt>ID</dt><dd><code>{{.ID}}</code></dd>
+    <dt>Aggregation</dt><dd><code>{{.Aggregation}}</code></dd>
+    <dt>Event type</dt><dd><code>{{.EventType}}</code></dd>
+    <dt>Value property</dt><dd>{{if .ValueProperty}}<code>{{.ValueProperty}}</code>{{else}}<span class="muted">—</span>{{end}}</dd>
+    <dt>Created</dt><dd>{{.CreatedAt}}</dd>
+    {{if .Archived}}<dt>Status</dt><dd><span class="badge badge-inactive">archived</span></dd>{{end}}
+    {{if .ArchivedAt}}<dt>Archived</dt><dd>{{.ArchivedAt}}</dd>{{end}}
+  </dl>
+</div>
+
+<h3 class="section-title">Features using this meter</h3>
+<div class="card">
+  {{if .Features}}
+  <table class="compact">
+    <thead>
+      <tr>
+        <th>Slug</th>
+        <th>Name</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Features}}
+      <tr>
+        <td><a href="/features/{{.Slug}}"><code>{{.Slug}}</code></a></td>
+        <td>{{.Name}}</td>
+        <td>{{.CreatedAt}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="muted">No features reference this meter.</p>
+  {{end}}
+</div>
+{{end}}

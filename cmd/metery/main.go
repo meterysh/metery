@@ -80,6 +80,14 @@ func getEnvOrDefault(key, def string) string {
 	return def
 }
 
+func mustEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("%s is required", key)
+	}
+	return v
+}
+
 func splitCSV(s string) []string {
 	if s == "" {
 		return nil
@@ -126,7 +134,7 @@ func main() {
 			st := store.New(db, driver)
 			srv := service.NewService(st)
 
-			sessions := auth.NewSessionManager([]byte(getEnvOrDefault("SESSION_SECRET", "dev-secret-change-me")))
+			sessions := auth.NewSessionManager([]byte(mustEnv("SESSION_SECRET")))
 			oauth := auth.NewOAuthHandler(auth.OAuthConfig{
 				ClientID:       os.Getenv("GOOGLE_CLIENT_ID"),
 				ClientSecret:   os.Getenv("GOOGLE_CLIENT_SECRET"),
@@ -176,9 +184,13 @@ func main() {
 
 			mux := http.NewServeMux()
 			oauth.RegisterRoutes(mux)
-			mux.HandleFunc("GET /{$}", webHandler.Index)
+			mux.HandleFunc("GET /{$}", webHandler.Overview)
+			mux.HandleFunc("GET /meters", webHandler.MetersPage)
+			mux.HandleFunc("GET /meters/{id_or_slug}", webHandler.MeterDetail)
 			mux.HandleFunc("GET /features", webHandler.FeaturesPage)
+			mux.HandleFunc("GET /features/{id_or_slug}", webHandler.FeatureDetail)
 			mux.HandleFunc("GET /customers", webHandler.CustomersPage)
+			mux.HandleFunc("GET /customers/{id_or_key}", webHandler.CustomerDetail)
 			mux.Handle("/", transcoder)
 			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)

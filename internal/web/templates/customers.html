@@ -1,6 +1,8 @@
 {{define "content"}}
-<div class="card">
+<div class="page-header">
   <h2>Customers</h2>
+</div>
+<div class="card">
   {{if .Customers}}
   <table class="compact">
     <thead>
@@ -15,7 +17,7 @@
     <tbody>
       {{range .Customers}}
       <tr>
-        <td><code>{{.Key}}</code></td>
+        <td><a href="/customers/{{.Key}}"><code>{{.Key}}</code></a></td>
         <td>{{.Name}}</td>
         <td><code>{{.ID}}</code></td>
         <td>{{.CreatedAt}}</td>

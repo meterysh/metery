@@ -1,6 +1,8 @@
 {{define "content"}}
-<div class="card">
+<div class="page-header">
   <h2>Features</h2>
+</div>
+<div class="card">
   {{if .Features}}
   <table class="compact">
     <thead>
@@ -15,7 +17,7 @@
     <tbody>
       {{range .Features}}
       <tr>
-        <td><code>{{.Slug}}</code></td>
+        <td><a href="/features/{{.Slug}}"><code>{{.Slug}}</code></a></td>
         <td>{{.Name}}</td>
         <td><span class="badge {{if eq .Type "metered"}}badge-metered{{else}}badge-boolean{{end}}">{{.Type}}</span></td>
         <td><code>{{.ID}}</code></td>
