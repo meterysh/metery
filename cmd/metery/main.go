@@ -116,13 +116,19 @@ func main() {
 			authInterceptor := auth.AuthMiddleware(apiKeys)
 			opts := connect.WithInterceptors(authInterceptor)
 
+			restOpt := vanguard.WithRESTUnmarshalOptions(vanguard.RESTUnmarshalOptions{
+				DiscardUnknownQueryParams: true,
+			})
+			newSvc := func(pattern string, handler http.Handler) *vanguard.Service {
+				return vanguard.NewService(pattern, handler, restOpt)
+			}
 			services := []*vanguard.Service{
-				vanguard.NewService(meteryv1connect.NewCustomerServiceHandler(srv, opts)),
-				vanguard.NewService(meteryv1connect.NewMeterServiceHandler(srv, opts)),
-				vanguard.NewService(meteryv1connect.NewFeatureServiceHandler(srv, opts)),
-				vanguard.NewService(meteryv1connect.NewEntitlementServiceHandler(srv, opts)),
-				vanguard.NewService(meteryv1connect.NewGrantServiceHandler(srv, opts)),
-				vanguard.NewService(meteryv1connect.NewEventServiceHandler(srv, opts)),
+				newSvc(meteryv1connect.NewCustomerServiceHandler(srv, opts)),
+				newSvc(meteryv1connect.NewMeterServiceHandler(srv, opts)),
+				newSvc(meteryv1connect.NewFeatureServiceHandler(srv, opts)),
+				newSvc(meteryv1connect.NewEntitlementServiceHandler(srv, opts)),
+				newSvc(meteryv1connect.NewGrantServiceHandler(srv, opts)),
+				newSvc(meteryv1connect.NewEventServiceHandler(srv, opts)),
 			}
 
 			transcoder, err := vanguard.NewTranscoder(services,
