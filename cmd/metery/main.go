@@ -29,6 +29,7 @@ import (
 	"github.com/meterysh/metery/internal/service"
 	"github.com/meterysh/metery/internal/store"
 	"github.com/meterysh/metery/internal/store/migrations"
+	"github.com/meterysh/metery/internal/web"
 	"github.com/meterysh/metery/internal/worker"
 )
 
@@ -79,6 +80,19 @@ func getEnvOrDefault(key, def string) string {
 	return def
 }
 
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func main() {
 	_ = godotenv.Load()
 
@@ -112,23 +126,37 @@ func main() {
 			st := store.New(db, driver)
 			srv := service.NewService(st)
 
+			sessions := auth.NewSessionManager([]byte(getEnvOrDefault("SESSION_SECRET", "dev-secret-change-me")))
+			oauth := auth.NewOAuthHandler(auth.OAuthConfig{
+				ClientID:       os.Getenv("GOOGLE_CLIENT_ID"),
+				ClientSecret:   os.Getenv("GOOGLE_CLIENT_SECRET"),
+				RedirectURL:    getEnvOrDefault("HOSTNAME", "http://localhost:8080") + "/auth/google/callback",
+				AllowedDomains: splitCSV(os.Getenv("ALLOWED_DOMAINS")),
+			}, sessions, st)
+			webHandler := web.NewHandler(st, sessions)
+
 			apiKeys := strings.Split(os.Getenv("API_KEYS"), ",")
 			authInterceptor := auth.AuthMiddleware(apiKeys)
-			opts := connect.WithInterceptors(authInterceptor)
+			interceptors := connect.WithInterceptors(authInterceptor)
 
-			restOpt := vanguard.WithRESTUnmarshalOptions(vanguard.RESTUnmarshalOptions{
+			customerPath, customerHandler := meteryv1connect.NewCustomerServiceHandler(srv, interceptors)
+			meterPath, meterHandler := meteryv1connect.NewMeterServiceHandler(srv, interceptors)
+			featurePath, featureHandler := meteryv1connect.NewFeatureServiceHandler(srv, interceptors)
+			entitlementPath, entitlementHandler := meteryv1connect.NewEntitlementServiceHandler(srv, interceptors)
+			grantPath, grantHandler := meteryv1connect.NewGrantServiceHandler(srv, interceptors)
+			eventPath, eventHandler := meteryv1connect.NewEventServiceHandler(srv, interceptors)
+
+			restOpts := vanguard.WithRESTUnmarshalOptions(vanguard.RESTUnmarshalOptions{
 				DiscardUnknownQueryParams: true,
 			})
-			newSvc := func(pattern string, handler http.Handler) *vanguard.Service {
-				return vanguard.NewService(pattern, handler, restOpt)
-			}
+
 			services := []*vanguard.Service{
-				newSvc(meteryv1connect.NewCustomerServiceHandler(srv, opts)),
-				newSvc(meteryv1connect.NewMeterServiceHandler(srv, opts)),
-				newSvc(meteryv1connect.NewFeatureServiceHandler(srv, opts)),
-				newSvc(meteryv1connect.NewEntitlementServiceHandler(srv, opts)),
-				newSvc(meteryv1connect.NewGrantServiceHandler(srv, opts)),
-				newSvc(meteryv1connect.NewEventServiceHandler(srv, opts)),
+				vanguard.NewService(customerPath, customerHandler, restOpts),
+				vanguard.NewService(meterPath, meterHandler, restOpts),
+				vanguard.NewService(featurePath, featureHandler, restOpts),
+				vanguard.NewService(entitlementPath, entitlementHandler, restOpts),
+				vanguard.NewService(grantPath, grantHandler, restOpts),
+				vanguard.NewService(eventPath, eventHandler, restOpts),
 			}
 
 			transcoder, err := vanguard.NewTranscoder(services,
@@ -147,6 +175,10 @@ func main() {
 			hostname := getEnvOrDefault("HOSTNAME", "http://localhost:8080")
 
 			mux := http.NewServeMux()
+			oauth.RegisterRoutes(mux)
+			mux.HandleFunc("GET /{$}", webHandler.Index)
+			mux.HandleFunc("GET /features", webHandler.FeaturesPage)
+			mux.HandleFunc("GET /customers", webHandler.CustomersPage)
 			mux.Handle("/", transcoder)
 			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
@@ -174,14 +206,15 @@ func main() {
 				}
 			}
 
+			port := getEnvOrDefault("PORT", "8080")
 			h2cSrv := &http2.Server{}
 			httpSrv := &http.Server{
-				Addr:    ":8080",
+				Addr:    ":" + port,
 				Handler: h2c.NewHandler(mux, h2cSrv),
 			}
 
 			go func() {
-				log.Println("Listening on :8080")
+				log.Println("Listening on :" + port)
 				if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					log.Fatalf("server failed: %v", err)
 				}
