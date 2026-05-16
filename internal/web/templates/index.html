@@ -1,35 +1,39 @@
 {{define "content"}}
-<div class="card">
-  <h2>Meters</h2>
-  {{if .Meters}}
-  <table class="compact">
-    <thead>
-      <tr>
-        <th>Slug</th>
-        <th>Name</th>
-        <th>Aggregation</th>
-        <th>Event type</th>
-        <th>Value property</th>
-        <th>ID</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{range .Meters}}
-      <tr>
-        <td><code>{{.Slug}}</code></td>
-        <td>{{.Name}}</td>
-        <td><code>{{.Aggregation}}</code></td>
-        <td><code>{{.EventType}}</code></td>
-        <td>{{if .ValueProperty}}<code>{{.ValueProperty}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
-        <td><code>{{.ID}}</code></td>
-        <td>{{.CreatedAt}}</td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
-  {{else}}
-  <p class="muted">No meters yet.</p>
-  {{end}}
+<div class="page-header">
+  <h2>Overview</h2>
+</div>
+<div class="stat-grid">
+  <a class="stat-card" href="/customers">
+    <div class="stat-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+    </div>
+    <div class="stat-number">{{.CustomerCount}}</div>
+    <div class="stat-label">Customers</div>
+  </a>
+  <a class="stat-card" href="/meters">
+    <div class="stat-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="20" x2="18" y2="10"/>
+        <line x1="12" y1="20" x2="12" y2="4"/>
+        <line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+    </div>
+    <div class="stat-number">{{.MeterCount}}</div>
+    <div class="stat-label">Meters</div>
+  </a>
+  <a class="stat-card" href="/features">
+    <div class="stat-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+    </div>
+    <div class="stat-number">{{.FeatureCount}}</div>
+    <div class="stat-label">Features</div>
+  </a>
 </div>
 {{end}}

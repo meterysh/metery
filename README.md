@@ -19,13 +19,13 @@ Integrate with your app to check customer access and ingest usage events.
 |---|---|---|
 | `PORT` | Port the HTTP server listens on | `8080` |
 | `DATABASE_URL` | Database connection string (see below) | `file:metery.db` |
-| `SESSION_SECRET` | Secret for signing session cookies (min 32 chars) | `dev-secret-change-me` |
-| `GOOGLE_CLIENT_ID` | Google OAuth2 client ID (for the web dashboard) | required |
+| `HOSTNAME` | Public base URL | `http://localhost:8080` |
+| `SESSION_SECRET` | Secret for signing session cookies | required |
+| `GOOGLE_CLIENT_ID` | Google OAuth2 client ID | required |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth2 client secret | required |
 | `API_KEYS` | Comma-separated list of Bearer tokens for API authentication | required |
-| `HOSTNAME` | Public base URL — injected into the served OpenAPI spec | `http://localhost:8080` |
-| `MIGRATE` | Run migrations on startup when `true` | — |
 | `ALLOWED_DOMAINS` | Comma-separated list of allowed email domains. | — |
+| `MIGRATE` | Run migrations on startup when `true` | — |
 
 ## Database
 
@@ -68,7 +68,7 @@ export API_KEYS="mtr_secret1,mtr_secret2"
 
 ### Dashboard (Google OAuth)
 
-Browser sessions are HMAC-signed cookies. Set `SESSION_SECRET` to a random string before deploying; the default is only suitable for local development.
+Browser sessions are HMAC-signed cookies. Set `SESSION_SECRET` to a long random string (32+ chars recommended) — the server refuses to start without it.
 
 ## Protocols
 

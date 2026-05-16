@@ -1,0 +1,69 @@
+{{define "content"}}
+<a class="back-link" href="/customers">← Customers</a>
+<div class="page-header">
+  <h2>{{.CustomerName}}</h2>
+</div>
+
+<div class="card">
+  <dl class="defs">
+    <dt>Key</dt><dd><code>{{.CustomerKey}}</code></dd>
+    <dt>ID</dt><dd><code>{{.CustomerID}}</code></dd>
+    <dt>Status</dt><dd>
+      {{if .Active}}<span class="badge badge-active">active</span>
+      {{else}}<span class="badge badge-inactive">deactivated</span>{{end}}
+    </dd>
+    <dt>Created</dt><dd>{{.CreatedAt}}</dd>
+    {{if .DeactivatedAt}}<dt>Deactivated</dt><dd>{{.DeactivatedAt}}</dd>{{end}}
+  </dl>
+</div>
+
+<h3 class="section-title">Entitlements</h3>
+{{if .Entitlements}}
+  {{range .Entitlements}}
+  <div class="card padded entitlement">
+    <div class="entitlement-header">
+      <div>
+        <a href="/features/{{.FeatureSlug}}"><code>{{.FeatureSlug}}</code></a>
+        {{if .FeatureName}}<span class="muted"> · {{.FeatureName}}</span>{{end}}
+        {{if .Deleted}}<span class="badge badge-inactive">deleted</span>{{end}}
+      </div>
+      <div class="muted small">
+        {{if .UsagePeriod}}period <code>{{.UsagePeriod}}</code> · {{end}}created {{.CreatedAt}}
+      </div>
+    </div>
+    {{if .Grants}}
+    <table class="compact nested">
+      <thead>
+        <tr>
+          <th>Amount</th>
+          <th>Priority</th>
+          <th>Effective</th>
+          <th>Expires</th>
+          <th>Recurrence</th>
+          <th>Status</th>
+          <th>ID</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Grants}}
+        <tr>
+          <td>{{.Amount}}</td>
+          <td>{{.Priority}}</td>
+          <td>{{.EffectiveAt}}</td>
+          <td>{{if .ExpiresAt}}{{.ExpiresAt}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td>{{if .Recurrence}}<code>{{.Recurrence}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
+          <td>{{if .Voided}}<span class="badge badge-inactive">voided</span>{{else}}<span class="badge badge-active">active</span>{{end}}</td>
+          <td><code>{{.ID}}</code></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted small">No grants.</p>
+    {{end}}
+  </div>
+  {{end}}
+{{else}}
+<div class="card padded"><p class="muted">No entitlements.</p></div>
+{{end}}
+{{end}}
