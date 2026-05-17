@@ -1,37 +1,42 @@
 {{define "content"}}
-<div class="page-header">
-  <h2>Meters</h2>
+<div class="mb-8">
+  <h2 class="text-2xl font-bold text-gray-900 tracking-tight text-balance">Meters</h2>
 </div>
-<div class="card">
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
   {{if .Meters}}
-  <table class="compact">
-    <thead>
-      <tr>
-        <th>Slug</th>
-        <th>Name</th>
-        <th>Aggregation</th>
-        <th>Event type</th>
-        <th>Value property</th>
-        <th>ID</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{range .Meters}}
-      <tr>
-        <td><a href="/meters/{{.Slug}}"><code>{{.Slug}}</code></a></td>
-        <td>{{.Name}}</td>
-        <td><code>{{.Aggregation}}</code></td>
-        <td><code>{{.EventType}}</code></td>
-        <td>{{if .ValueProperty}}<code>{{.ValueProperty}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
-        <td><code>{{.ID}}</code></td>
-        <td>{{.CreatedAt}}</td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-sm whitespace-nowrap">
+      <thead class="bg-gray-50 text-gray-500 uppercase tracking-wider text-xs font-medium border-b border-gray-200">
+        <tr>
+          <th class="px-6 py-4">Slug</th>
+          <th class="px-6 py-4">Name</th>
+          <th class="px-6 py-4">Aggregation</th>
+          <th class="px-6 py-4">Event type</th>
+          <th class="px-6 py-4">Value property</th>
+          <th class="px-6 py-4">Created</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        {{range .Meters}}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-6 py-3"><a href="/meters/{{.Slug}}" class="text-brand-600 hover:text-brand-800 hover:underline font-mono text-xs font-medium tabular-nums">{{.Slug}}</a></td>
+          <td class="px-6 py-3 text-gray-900 font-medium truncate max-w-xs">{{.Name}}</td>
+          <td class="px-6 py-3"><code class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs border border-gray-200 tabular-nums">{{.Aggregation}}</code></td>
+          <td class="px-6 py-3"><code class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs border border-gray-200 tabular-nums">{{.EventType}}</code></td>
+          <td class="px-6 py-3">{{if .ValueProperty}}<code class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs border border-gray-200 tabular-nums">{{.ValueProperty}}</code>{{else}}<span class="text-gray-400">&mdash;</span>{{end}}</td>
+          <td class="px-6 py-3 text-gray-500 tabular-nums">{{.CreatedAt}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
   {{else}}
-  <p class="muted">No meters yet.</p>
+  <div class="px-6 py-12 text-center text-gray-500">
+    <svg aria-hidden="true" class="mx-auto h-12 w-12 text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+    </svg>
+    <p>No meters yet.</p>
+  </div>
   {{end}}
 </div>
 {{end}}

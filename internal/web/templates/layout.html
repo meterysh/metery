@@ -4,274 +4,124 @@
   <meta charset="UTF-8">
   <title>{{if .Title}}{{.Title}} — Metery{{else}}Metery{{end}}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f6f8fa;
-      color: #24292f;
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              200: '#bfdbfe',
+              300: '#93c5fd',
+              400: '#60a5fa',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              800: '#1e40af',
+              900: '#1e3a8a',
+            }
+          }
+        }
+      }
     }
-    header {
-      background: #fff;
-      border-bottom: 1px solid #d0d7de;
-    }
-    header .inner {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 0 24px;
-      display: flex;
-      align-items: stretch;
-      justify-content: space-between;
-      min-height: 52px;
-    }
-    header .left {
-      display: flex;
-      align-items: stretch;
-      gap: 20px;
-    }
-    header h1 {
-      font-size: 16px;
-      font-weight: 700;
-      margin: 0;
-      letter-spacing: -.02em;
-      display: flex;
-      align-items: center;
-    }
-    header h1 a { color: inherit; text-decoration: none; }
-    header nav {
-      display: flex;
-      gap: 0;
-      align-items: stretch;
-    }
-    header nav a {
-      display: flex;
-      align-items: center;
-      padding: 0 14px;
-      font-size: 13.5px;
-      color: #57606a;
-      text-decoration: none;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-      transition: color .12s;
-    }
-    header nav a:hover { color: #24292f; }
-    header nav a.active { color: #0969da; border-bottom-color: #0969da; font-weight: 500; }
-    header .user-info {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    header .user {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      color: #57606a;
-    }
-    header .avatar {
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      background: #ddf4ff;
-      color: #0550ae;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-    header a.logout {
-      color: #57606a;
-      text-decoration: none;
-      font-size: 13px;
-      padding: 5px 10px;
-      border-radius: 6px;
-      border: 1px solid #d0d7de;
-      transition: background .12s, border-color .12s;
-    }
-    header a.logout:hover { background: #f6f8fa; border-color: #b0b8c1; color: #24292f; }
-    main {
-      max-width: 1200px;
-      margin: 28px auto 40px;
-      padding: 0 24px;
-    }
-    .page-header {
-      margin-bottom: 24px;
-    }
-    .page-header h2 {
-      font-size: 24px;
-      font-weight: 600;
-      margin: 0;
-      letter-spacing: -.02em;
-      line-height: 1.2;
-    }
-.defs a { color: #0969da; text-decoration: none; }
-    .defs a:hover { text-decoration: underline; }
-    .back-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 13px;
-      color: #57606a;
-      text-decoration: none;
-      margin-bottom: 14px;
-    }
-    .back-link:hover { color: #0969da; }
-    .section-title {
-      font-size: 12px;
-      font-weight: 700;
-      color: #57606a;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      margin: 32px 0 12px;
-    }
-
-    /* Stat cards */
-    .stat-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-      margin-bottom: 0;
-    }
-    .stat-card {
-      background: #fff;
-      border: 1px solid #d0d7de;
-      border-radius: 10px;
-      padding: 24px 24px 22px;
-      text-decoration: none;
-      color: inherit;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      transition: border-color .15s, box-shadow .15s;
-    }
-    .stat-card:hover {
-      border-color: #0969da;
-      box-shadow: 0 0 0 3px rgba(9, 105, 218, .08);
-    }
-    .stat-icon {
-      color: #57606a;
-      display: flex;
-    }
-    .stat-number {
-      font-size: 40px;
-      font-weight: 600;
-      color: #24292f;
-      line-height: 1;
-      letter-spacing: -.02em;
-    }
-    .stat-label {
-      font-size: 13.5px;
-      color: #57606a;
-      font-weight: 500;
-    }
-
-    /* Data cards */
-    .card {
-      background: #fff;
-      border: 1px solid #d0d7de;
-      border-radius: 10px;
-      overflow: hidden;
-      margin-bottom: 16px;
-      box-shadow: 0 1px 0 rgba(27,31,36,.04);
-    }
-    .card.padded { padding: 20px 22px; }
-    .defs {
-      display: grid;
-      grid-template-columns: 160px 1fr;
-      margin: 0;
-      font-size: 13.5px;
-    }
-    .defs dt, .defs dd {
-      padding: 13px 22px;
-      border-bottom: 1px solid #eaeef2;
-    }
-    .defs dt { color: #57606a; font-weight: 500; }
-    .defs dd {
-      margin: 0;
-      color: #24292f;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .defs > dt:nth-last-of-type(1),
-    .defs > dt:nth-last-of-type(1) + dd { border-bottom: none; }
-    .entitlement-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 12px;
-      margin-bottom: 12px;
-      flex-wrap: wrap;
-    }
-    .entitlement-header a { color: #0969da; text-decoration: none; }
-    .entitlement-header a:hover { text-decoration: underline; }
-    .small { font-size: 12.5px; }
-    table.nested {
-      margin: 0 -22px -20px;
-      width: calc(100% + 44px);
-      border-top: 1px solid #eaeef2;
-    }
-    table.nested th:first-child, table.nested td:first-child { padding-left: 22px; }
-    table.nested th:last-child, table.nested td:last-child { padding-right: 22px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #eaeef2; }
-    th { color: #57606a; font-weight: 500; background: #f6f8fa; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-    table.compact td, table.compact th { padding: 8px 14px; }
-    tbody tr:last-child td { border-bottom: none; }
-    tbody tr:hover td { background: #f6f8fa; }
-    table a { color: #0969da; text-decoration: none; }
-    table a:hover { text-decoration: underline; }
-    .card > p.muted { padding: 20px 14px; margin: 0; }
-    code {
-      background: #eaeef2;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-    }
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 600;
-    }
-    .badge-active   { background: #dafbe1; color: #116329; }
-    .badge-inactive { background: #eaeef2; color: #57606a; }
-    .badge-metered  { background: #ddf4ff; color: #0550ae; }
-    .badge-boolean  { background: #f1f8ff; color: #57606a; }
-    .muted { color: #57606a; }
-  </style>
+  </script>
 </head>
-<body>
-  <header>
-    <div class="inner">
-      <div class="left">
-        <h1><a href="/">Metery</a></h1>
-        <nav>
-          <a href="/" {{if eq .ActiveTab "overview"}}class="active"{{end}}>Overview</a>
-          <a href="/customers" {{if eq .ActiveTab "customers"}}class="active"{{end}}>Customers</a>
-          <a href="/meters" {{if eq .ActiveTab "meters"}}class="active"{{end}}>Meters</a>
-          <a href="/features" {{if eq .ActiveTab "features"}}class="active"{{end}}>Features</a>
+<body class="bg-gray-50 text-gray-900 font-sans antialiased min-h-screen flex flex-col">
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-8">
+        <h1 class="text-xl font-extrabold tracking-tight text-gray-900">
+          <a href="/" class="flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-sm">
+            <svg aria-hidden="true" class="w-6 h-6 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Metery
+          </a>
+        </h1>
+        <nav class="hidden md:flex gap-2">
+          <a href="/" class="px-3 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 {{if eq .ActiveTab "overview"}}bg-brand-50 text-brand-700{{else}}text-gray-600 hover:text-gray-900 hover:bg-gray-100{{end}}">Overview</a>
+          <a href="/customers" class="px-3 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 {{if eq .ActiveTab "customers"}}bg-brand-50 text-brand-700{{else}}text-gray-600 hover:text-gray-900 hover:bg-gray-100{{end}}">Customers</a>
+          <a href="/meters" class="px-3 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 {{if eq .ActiveTab "meters"}}bg-brand-50 text-brand-700{{else}}text-gray-600 hover:text-gray-900 hover:bg-gray-100{{end}}">Meters</a>
+          <a href="/features" class="px-3 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 {{if eq .ActiveTab "features"}}bg-brand-50 text-brand-700{{else}}text-gray-600 hover:text-gray-900 hover:bg-gray-100{{end}}">Features</a>
         </nav>
       </div>
       {{if .User}}
-      <div class="user-info">
-        <span class="user">
-          <span class="avatar">{{slice .User.Email 0 1}}</span>
-          {{.User.Email}}
-        </span>
-        <a class="logout" href="/auth/logout">Logout</a>
+      <div class="relative" id="user-menu-container">
+        <button type="button" class="flex items-center gap-2 text-sm text-gray-700 hover:bg-gray-50 px-2 py-1.5 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 transition-colors" id="user-menu-button" aria-expanded="false" aria-haspopup="true">
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-brand-800 flex items-center justify-center font-bold text-xs uppercase shadow-inner border border-brand-200">
+            {{slice .User.Email 0 1}}
+          </div>
+          <span class="hidden sm:inline font-medium">{{.User.Email}}</span>
+          <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        <div class="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 divide-y divide-gray-100 hidden z-50 transform opacity-0 scale-95 transition-all duration-100 origin-top-right" role="menu" aria-orientation="vertical" aria-labelledby="user-menu-button" tabindex="-1" id="user-menu-dropdown">
+          <div class="py-1" role="none">
+            <p class="px-4 py-2 text-sm text-gray-500 truncate" role="none">
+              Signed in as<br>
+              <span class="font-medium text-gray-900 truncate block">{{.User.Email}}</span>
+            </p>
+          </div>
+          <div class="py-1" role="none">
+            <a href="/auth/logout" class="group flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900" role="menuitem" tabindex="-1" id="user-menu-item-logout">
+              <svg class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Sign out
+            </a>
+          </div>
+        </div>
       </div>
       {{end}}
     </div>
   </header>
-  <main>
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
     {{template "content" .}}
   </main>
+  <footer class="border-t border-gray-200 py-6 text-center text-sm text-gray-500 mt-auto">
+    <p><a href="/openapi.yaml" class="hover:text-gray-900 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 rounded-sm">API Spec</a></p>
+  </footer>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const button = document.getElementById('user-menu-button');
+      const dropdown = document.getElementById('user-menu-dropdown');
+      
+      if (!button || !dropdown) return;
+
+      const toggleMenu = () => {
+        const isExpanded = button.getAttribute('aria-expanded') === 'true';
+        button.setAttribute('aria-expanded', !isExpanded);
+        
+        if (isExpanded) {
+          dropdown.classList.add('opacity-0', 'scale-95');
+          dropdown.classList.remove('opacity-100', 'scale-100');
+          setTimeout(() => dropdown.classList.add('hidden'), 100);
+        } else {
+          dropdown.classList.remove('hidden');
+          // small delay to allow display block to apply before animating opacity
+          setTimeout(() => {
+            dropdown.classList.remove('opacity-0', 'scale-95');
+            dropdown.classList.add('opacity-100', 'scale-100');
+          }, 10);
+        }
+      };
+
+      button.addEventListener('click', toggleMenu);
+
+      // Close when clicking outside
+      document.addEventListener('click', (event) => {
+        if (!button.contains(event.target) && !dropdown.contains(event.target)) {
+          if (button.getAttribute('aria-expanded') === 'true') {
+            toggleMenu();
+          }
+        }
+      });
+    });
+  </script>
 </body>
 </html>
