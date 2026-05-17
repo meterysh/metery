@@ -1,69 +1,100 @@
 {{define "content"}}
-<a class="back-link" href="/customers">← Customers</a>
-<div class="page-header">
-  <h2>{{.CustomerName}}</h2>
+<div class="mb-6">
+  <a href="/customers" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-brand-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-sm">
+    <svg aria-hidden="true" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+    </svg>
+    Customers
+  </a>
+</div>
+<div class="mb-8">
+  <h2 class="text-2xl font-bold text-gray-900 tracking-tight text-balance">{{.CustomerName}}</h2>
 </div>
 
-<div class="card">
-  <dl class="defs">
-    <dt>Key</dt><dd><code>{{.CustomerKey}}</code></dd>
-    <dt>ID</dt><dd><code>{{.CustomerID}}</code></dd>
-    <dt>Status</dt><dd>
-      {{if .Active}}<span class="badge badge-active">active</span>
-      {{else}}<span class="badge badge-inactive">deactivated</span>{{end}}
-    </dd>
-    <dt>Created</dt><dd>{{.CreatedAt}}</dd>
-    {{if .DeactivatedAt}}<dt>Deactivated</dt><dd>{{.DeactivatedAt}}</dd>{{end}}
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-8">
+  <dl class="divide-y divide-gray-200 text-sm">
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Key</dt>
+      <dd class="col-span-2 text-gray-900"><code class="bg-gray-100 text-gray-800 px-2 py-1 rounded border border-gray-200 tabular-nums">{{.CustomerKey}}</code></dd>
+    </div>
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">ID</dt>
+      <dd class="col-span-2 text-gray-900"><code class="bg-gray-100 text-gray-800 px-2 py-1 rounded border border-gray-200 tabular-nums">{{.CustomerID}}</code></dd>
+    </div>
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Status</dt>
+      <dd class="col-span-2 text-gray-900">
+        {{if .Active}}<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">Active</span>
+        {{else}}<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">Deactivated</span>{{end}}
+      </dd>
+    </div>
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Created</dt>
+      <dd class="col-span-2 text-gray-900 tabular-nums">{{.CreatedAt}}</dd>
+    </div>
+    {{if .DeactivatedAt}}
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Deactivated</dt>
+      <dd class="col-span-2 text-gray-900 tabular-nums">{{.DeactivatedAt}}</dd>
+    </div>
+    {{end}}
   </dl>
 </div>
 
-<h3 class="section-title">Entitlements</h3>
+<h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Entitlements</h3>
 {{if .Entitlements}}
+  <div class="space-y-4">
   {{range .Entitlements}}
-  <div class="card padded entitlement">
-    <div class="entitlement-header">
-      <div>
-        <a href="/features/{{.FeatureSlug}}"><code>{{.FeatureSlug}}</code></a>
-        {{if .FeatureName}}<span class="muted"> · {{.FeatureName}}</span>{{end}}
-        {{if .Deleted}}<span class="badge badge-inactive">deleted</span>{{end}}
+  <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+    <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-gray-50/50">
+      <div class="flex items-center gap-2 flex-wrap">
+        <a href="/features/{{.FeatureSlug}}" class="font-medium text-gray-900 hover:text-brand-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-sm">{{if .FeatureName}}{{.FeatureName}}{{else}}<span class="font-mono text-sm">{{.FeatureSlug}}</span>{{end}}</a>
+        {{if .Deleted}}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200 ml-2">Deleted</span>{{end}}
       </div>
-      <div class="muted small">
-        {{if .UsagePeriod}}period <code>{{.UsagePeriod}}</code> · {{end}}created {{.CreatedAt}}
+      <div class="text-gray-500 text-xs flex items-center gap-2">
+        {{if .UsagePeriod}}<span>Period <code class="bg-gray-100 px-1 rounded border border-gray-200">{{.UsagePeriod}}</code></span> &middot; {{end}}
+        <span>Created <span class="tabular-nums">{{.CreatedAt}}</span></span>
       </div>
     </div>
     {{if .Grants}}
-    <table class="compact nested">
-      <thead>
-        <tr>
-          <th>Amount</th>
-          <th>Priority</th>
-          <th>Effective</th>
-          <th>Expires</th>
-          <th>Recurrence</th>
-          <th>Status</th>
-          <th>ID</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{range .Grants}}
-        <tr>
-          <td>{{.Amount}}</td>
-          <td>{{.Priority}}</td>
-          <td>{{.EffectiveAt}}</td>
-          <td>{{if .ExpiresAt}}{{.ExpiresAt}}{{else}}<span class="muted">—</span>{{end}}</td>
-          <td>{{if .Recurrence}}<code>{{.Recurrence}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
-          <td>{{if .Voided}}<span class="badge badge-inactive">voided</span>{{else}}<span class="badge badge-active">active</span>{{end}}</td>
-          <td><code>{{.ID}}</code></td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm whitespace-nowrap">
+        <thead class="bg-white text-gray-500 uppercase tracking-wider text-xs font-medium border-b border-gray-200">
+          <tr>
+            <th class="px-6 py-3">Amount</th>
+            <th class="px-6 py-3">Priority</th>
+            <th class="px-6 py-3">Effective</th>
+            <th class="px-6 py-3">Expires</th>
+            <th class="px-6 py-3">Recurrence</th>
+            <th class="px-6 py-3">Status</th>
+            <th class="px-6 py-3">ID</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {{range .Grants}}
+          <tr class="hover:bg-gray-50 transition-colors">
+            <td class="px-6 py-2.5 font-medium text-gray-900 tabular-nums">{{.Amount}}</td>
+            <td class="px-6 py-2.5 text-gray-600 tabular-nums">{{.Priority}}</td>
+            <td class="px-6 py-2.5 text-gray-600 tabular-nums">{{.EffectiveAt}}</td>
+            <td class="px-6 py-2.5 text-gray-600 tabular-nums">{{if .ExpiresAt}}{{.ExpiresAt}}{{else}}<span class="text-gray-400">&mdash;</span>{{end}}</td>
+            <td class="px-6 py-2.5">{{if .Recurrence}}<code class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs border border-gray-200">{{.Recurrence}}</code>{{else}}<span class="text-gray-400">&mdash;</span>{{end}}</td>
+            <td class="px-6 py-2.5">
+              {{if .Voided}}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">Voided</span>
+              {{else}}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">Active</span>{{end}}
+            </td>
+            <td class="px-6 py-2.5"><code class="text-xs text-gray-500 tabular-nums">{{.ID}}</code></td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
     {{else}}
-    <p class="muted small">No grants.</p>
+    <div class="px-6 py-4 text-sm text-gray-500 italic">No grants.</div>
     {{end}}
   </div>
   {{end}}
+  </div>
 {{else}}
-<div class="card padded"><p class="muted">No entitlements.</p></div>
+<div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm"><p class="text-gray-500 text-sm">No entitlements.</p></div>
 {{end}}
 {{end}}

@@ -1,33 +1,44 @@
 {{define "content"}}
-<div class="page-header">
-  <h2>Features</h2>
+<div class="mb-8">
+  <h2 class="text-2xl font-bold text-gray-900 tracking-tight text-balance">Features</h2>
 </div>
-<div class="card">
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
   {{if .Features}}
-  <table class="compact">
-    <thead>
-      <tr>
-        <th>Slug</th>
-        <th>Name</th>
-        <th>Type</th>
-        <th>ID</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{range .Features}}
-      <tr>
-        <td><a href="/features/{{.Slug}}"><code>{{.Slug}}</code></a></td>
-        <td>{{.Name}}</td>
-        <td><span class="badge {{if eq .Type "metered"}}badge-metered{{else}}badge-boolean{{end}}">{{.Type}}</span></td>
-        <td><code>{{.ID}}</code></td>
-        <td>{{.CreatedAt}}</td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-sm whitespace-nowrap">
+      <thead class="bg-gray-50 text-gray-500 uppercase tracking-wider text-xs font-medium border-b border-gray-200">
+        <tr>
+          <th class="px-6 py-4">Slug</th>
+          <th class="px-6 py-4">Name</th>
+          <th class="px-6 py-4">Type</th>
+          <th class="px-6 py-4">Created</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        {{range .Features}}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-6 py-3"><a href="/features/{{.Slug}}" class="text-brand-600 hover:text-brand-800 hover:underline font-mono text-xs font-medium tabular-nums">{{.Slug}}</a></td>
+          <td class="px-6 py-3 text-gray-900 font-medium truncate max-w-xs">{{.Name}}</td>
+          <td class="px-6 py-3">
+            {{if eq .Type "metered"}}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-100 text-brand-800 border border-brand-200">{{.Type}}</span>
+            {{else}}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">{{.Type}}</span>
+            {{end}}
+          </td>
+          <td class="px-6 py-3 text-gray-500 tabular-nums">{{.CreatedAt}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
   {{else}}
-  <p class="muted">No features yet.</p>
+  <div class="px-6 py-12 text-center text-gray-500">
+    <svg aria-hidden="true" class="mx-auto h-12 w-12 text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+    </svg>
+    <p>No features yet.</p>
+  </div>
   {{end}}
 </div>
 {{end}}

@@ -1,39 +1,48 @@
 {{define "content"}}
-<div class="page-header">
-  <h2>Overview</h2>
+<div class="mb-8">
+  <h2 class="text-2xl font-bold text-gray-900 tracking-tight">Overview</h2>
 </div>
-<div class="stat-grid">
-  <a class="stat-card" href="/customers">
-    <div class="stat-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+  <a href="/customers" class="bg-white rounded-xl border border-gray-200 p-6 flex flex-col gap-4 shadow-sm hover:shadow-md hover:border-brand-300 transition-colors group">
+    <div class="w-10 h-10 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center group-hover:bg-brand-100 transition-colors">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
         <circle cx="9" cy="7" r="4"/>
         <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
         <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
       </svg>
     </div>
-    <div class="stat-number">{{.CustomerCount}}</div>
-    <div class="stat-label">Customers</div>
+    <div>
+      <div class="text-4xl font-extrabold text-gray-900 tracking-tight tabular-nums">{{.CustomerCount}}</div>
+      <div class="text-sm font-medium text-gray-500 mt-1 uppercase tracking-wider">Customers</div>
+    </div>
   </a>
-  <a class="stat-card" href="/meters">
-    <div class="stat-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+
+  <a href="/meters" class="bg-white rounded-xl border border-gray-200 p-6 flex flex-col gap-4 shadow-sm hover:shadow-md hover:border-brand-300 transition-colors group">
+    <div class="w-10 h-10 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center group-hover:bg-brand-100 transition-colors">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="18" y1="20" x2="18" y2="10"/>
         <line x1="12" y1="20" x2="12" y2="4"/>
         <line x1="6" y1="20" x2="6" y2="14"/>
       </svg>
     </div>
-    <div class="stat-number">{{.MeterCount}}</div>
-    <div class="stat-label">Meters</div>
+    <div>
+      <div class="text-4xl font-extrabold text-gray-900 tracking-tight tabular-nums">{{.MeterCount}}</div>
+      <div class="text-sm font-medium text-gray-500 mt-1 uppercase tracking-wider">Meters</div>
+    </div>
   </a>
-  <a class="stat-card" href="/features">
-    <div class="stat-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+
+  <a href="/features" class="bg-white rounded-xl border border-gray-200 p-6 flex flex-col gap-4 shadow-sm hover:shadow-md hover:border-brand-300 transition-colors group">
+    <div class="w-10 h-10 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center group-hover:bg-brand-100 transition-colors">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
       </svg>
     </div>
-    <div class="stat-number">{{.FeatureCount}}</div>
-    <div class="stat-label">Features</div>
+    <div>
+      <div class="text-4xl font-extrabold text-gray-900 tracking-tight tabular-nums">{{.FeatureCount}}</div>
+      <div class="text-sm font-medium text-gray-500 mt-1 uppercase tracking-wider">Features</div>
+    </div>
   </a>
 </div>
 {{end}}

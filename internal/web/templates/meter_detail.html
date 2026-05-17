@@ -1,45 +1,84 @@
 {{define "content"}}
-<a class="back-link" href="/meters">← Meters</a>
-<div class="page-header">
-  <h2>{{.Name}}</h2>
+<div class="mb-6">
+  <a href="/meters" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-brand-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-sm">
+    <svg aria-hidden="true" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+    </svg>
+    Meters
+  </a>
+</div>
+<div class="mb-8">
+  <h2 class="text-2xl font-bold text-gray-900 tracking-tight text-balance">{{.Name}}</h2>
 </div>
 
-<div class="card">
-  <dl class="defs">
-    <dt>Slug</dt><dd><code>{{.Slug}}</code></dd>
-    <dt>ID</dt><dd><code>{{.ID}}</code></dd>
-    <dt>Aggregation</dt><dd><code>{{.Aggregation}}</code></dd>
-    <dt>Event type</dt><dd><code>{{.EventType}}</code></dd>
-    <dt>Value property</dt><dd>{{if .ValueProperty}}<code>{{.ValueProperty}}</code>{{else}}<span class="muted">—</span>{{end}}</dd>
-    <dt>Created</dt><dd>{{.CreatedAt}}</dd>
-    {{if .Archived}}<dt>Status</dt><dd><span class="badge badge-inactive">archived</span></dd>{{end}}
-    {{if .ArchivedAt}}<dt>Archived</dt><dd>{{.ArchivedAt}}</dd>{{end}}
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-8">
+  <dl class="divide-y divide-gray-200 text-sm">
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Slug</dt>
+      <dd class="col-span-2 text-gray-900"><code class="bg-gray-100 text-gray-800 px-2 py-1 rounded border border-gray-200 tabular-nums">{{.Slug}}</code></dd>
+    </div>
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">ID</dt>
+      <dd class="col-span-2 text-gray-900"><code class="bg-gray-100 text-gray-800 px-2 py-1 rounded border border-gray-200 tabular-nums">{{.ID}}</code></dd>
+    </div>
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Aggregation</dt>
+      <dd class="col-span-2 text-gray-900"><code class="bg-gray-100 text-gray-800 px-2 py-1 rounded border border-gray-200 tabular-nums">{{.Aggregation}}</code></dd>
+    </div>
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Event type</dt>
+      <dd class="col-span-2 text-gray-900"><code class="bg-gray-100 text-gray-800 px-2 py-1 rounded border border-gray-200 tabular-nums">{{.EventType}}</code></dd>
+    </div>
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Value property</dt>
+      <dd class="col-span-2 text-gray-900">{{if .ValueProperty}}<code class="bg-gray-100 text-gray-800 px-2 py-1 rounded border border-gray-200 tabular-nums">{{.ValueProperty}}</code>{{else}}<span class="text-gray-400">&mdash;</span>{{end}}</dd>
+    </div>
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Created</dt>
+      <dd class="col-span-2 text-gray-900 tabular-nums">{{.CreatedAt}}</dd>
+    </div>
+    {{if .Archived}}
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Status</dt>
+      <dd class="col-span-2 text-gray-900"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">Archived</span></dd>
+    </div>
+    {{end}}
+    {{if .ArchivedAt}}
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Archived</dt>
+      <dd class="col-span-2 text-gray-900 tabular-nums">{{.ArchivedAt}}</dd>
+    </div>
+    {{end}}
   </dl>
 </div>
 
-<h3 class="section-title">Features using this meter</h3>
-<div class="card">
+<h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Features using this meter</h3>
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
   {{if .Features}}
-  <table class="compact">
-    <thead>
-      <tr>
-        <th>Slug</th>
-        <th>Name</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{range .Features}}
-      <tr>
-        <td><a href="/features/{{.Slug}}"><code>{{.Slug}}</code></a></td>
-        <td>{{.Name}}</td>
-        <td>{{.CreatedAt}}</td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-sm whitespace-nowrap">
+      <thead class="bg-gray-50 text-gray-500 uppercase tracking-wider text-xs font-medium border-b border-gray-200">
+        <tr>
+          <th class="px-6 py-4">Slug</th>
+          <th class="px-6 py-4">Name</th>
+          <th class="px-6 py-4">Created</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        {{range .Features}}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-6 py-3"><a href="/features/{{.Slug}}" class="text-brand-600 hover:text-brand-800 hover:underline font-mono text-xs font-medium tabular-nums">{{.Slug}}</a></td>
+          <td class="px-6 py-3 text-gray-900 font-medium truncate max-w-xs">{{.Name}}</td>
+          <td class="px-6 py-3 text-gray-500 tabular-nums">{{.CreatedAt}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
   {{else}}
-  <p class="muted">No features reference this meter.</p>
+  <div class="px-6 py-8 text-center text-sm text-gray-500">
+    <p>No features reference this meter.</p>
+  </div>
   {{end}}
 </div>
 {{end}}
