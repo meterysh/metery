@@ -40,6 +40,7 @@ func (s *Service) CreateFeature(ctx context.Context, req *connect.Request[metery
 			Slug:      f.Slug,
 			Name:      f.Name,
 			MeterSlug: meterSlug,
+			CreatedAt: timestamppb.New(f.CreatedAt),
 		},
 	}), nil
 }

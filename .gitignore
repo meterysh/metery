@@ -3,6 +3,7 @@ gen/
 /metery
 
 .env
+.env.production
 
 *.db
 

@@ -43,10 +43,7 @@ func (s *Service) CreateEntitlement(ctx context.Context, req *connect.Request[me
 	}
 
 	return connect.NewResponse(&meteryv1.CreateEntitlementResponse{
-		Entitlement: &meteryv1.Entitlement{
-			Id:          e.ID,
-			FeatureSlug: f.Slug,
-		},
+		Entitlement: entitlementToProto(e, c.Key, f.Slug),
 	}), nil
 }
 

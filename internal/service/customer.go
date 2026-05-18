@@ -24,9 +24,10 @@ func (s *Service) CreateCustomer(ctx context.Context, req *connect.Request[meter
 	}
 	return connect.NewResponse(&meteryv1.CreateCustomerResponse{
 		Customer: &meteryv1.Customer{
-			Id:   c.ID,
-			Key:  c.Key,
-			Name: c.Name,
+			Id:        c.ID,
+			Key:       c.Key,
+			Name:      c.Name,
+			CreatedAt: timestamppb.New(c.CreatedAt),
 		},
 	}), nil
 }
