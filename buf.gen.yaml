@@ -7,3 +7,12 @@ plugins:
   - remote: buf.build/connectrpc/go
     out: gen/go
     opt: paths=source_relative
+  - remote: buf.build/community/sudorandom-connect-openapi:v0.25.6
+    out: public
+    opt:
+      - only-googleapi-http
+      - short-operation-ids
+      - trim-unused-types
+      - with-proto-names
+      - without-default-tags
+      - path=openapi.yaml
