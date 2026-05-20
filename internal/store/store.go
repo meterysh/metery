@@ -115,11 +115,13 @@ type EntitlementRow struct {
 	UsagePeriodAnchor   *time.Time `db:"usage_period_anchor"`
 	CreatedAt           time.Time  `db:"created_at"`
 	DeletedAt           *time.Time `db:"deleted_at"`
+	// NULL ⇒ manually granted. Non-NULL ⇒ materialised from the named subscription.
+	SubscriptionID *string `db:"subscription_id"`
 }
 
 func (s *Store) CreateEntitlement(ctx context.Context, e *EntitlementRow) error {
-	q := `INSERT INTO entitlements (id, customer_id, feature_id, usage_period_duration, usage_period_anchor, created_at)
-	      VALUES (:id, :customer_id, :feature_id, :usage_period_duration, :usage_period_anchor, :created_at)`
+	q := `INSERT INTO entitlements (id, customer_id, feature_id, usage_period_duration, usage_period_anchor, created_at, subscription_id)
+	      VALUES (:id, :customer_id, :feature_id, :usage_period_duration, :usage_period_anchor, :created_at, :subscription_id)`
 	_, err := s.db.NamedExecContext(ctx, q, e)
 	return err
 }
@@ -146,11 +148,13 @@ type GrantRow struct {
 	Metadata           *string    `db:"metadata"`
 	CreatedAt          time.Time  `db:"created_at"`
 	VoidedAt           *time.Time `db:"voided_at"`
+	// NULL ⇒ manually granted. Non-NULL ⇒ materialised from the named subscription.
+	SubscriptionID *string `db:"subscription_id"`
 }
 
 func (s *Store) CreateGrant(ctx context.Context, g *GrantRow) error {
-	q := `INSERT INTO grants (id, entitlement_id, amount, priority, effective_at, expires_at, recurrence_interval, recurrence_anchor, rollover_max, rollover_type, parent_grant_id, metadata, created_at)
-	      VALUES (:id, :entitlement_id, :amount, :priority, :effective_at, :expires_at, :recurrence_interval, :recurrence_anchor, :rollover_max, :rollover_type, :parent_grant_id, :metadata, :created_at)`
+	q := `INSERT INTO grants (id, entitlement_id, amount, priority, effective_at, expires_at, recurrence_interval, recurrence_anchor, rollover_max, rollover_type, parent_grant_id, metadata, created_at, subscription_id)
+	      VALUES (:id, :entitlement_id, :amount, :priority, :effective_at, :expires_at, :recurrence_interval, :recurrence_anchor, :rollover_max, :rollover_type, :parent_grant_id, :metadata, :created_at, :subscription_id)`
 	_, err := s.db.NamedExecContext(ctx, q, g)
 	return err
 }
@@ -446,6 +450,244 @@ func (s *Store) SaveSnapshots(ctx context.Context, snaps []ledger.Snapshot, enti
 		q := `INSERT INTO balance_snapshots (entitlement_id, as_of, balance, per_grant_state) VALUES (:entitlement_id, :as_of, :balance, :per_grant_state) ON CONFLICT (entitlement_id, as_of) DO NOTHING`
 		if _, err := s.db.NamedExecContext(ctx, q, row); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// ─── Plans ─────────────────────────────────────────────────────────
+
+type PlanRow struct {
+	ID         string     `db:"id"`
+	Slug       string     `db:"slug"`
+	Name       string     `db:"name"`
+	Entries    string     `db:"entries"` // JSON: []PlanEntry, marshalled by service layer
+	Metadata   *string    `db:"metadata"`
+	CreatedAt  time.Time  `db:"created_at"`
+	ArchivedAt *time.Time `db:"archived_at"`
+}
+
+func (s *Store) CreatePlan(ctx context.Context, p *PlanRow) error {
+	q := `INSERT INTO plans (id, slug, name, entries, metadata, created_at)
+	      VALUES (:id, :slug, :name, :entries, :metadata, :created_at)`
+	_, err := s.db.NamedExecContext(ctx, q, p)
+	return err
+}
+
+func (s *Store) GetPlan(ctx context.Context, idOrSlug string) (*PlanRow, error) {
+	q := `SELECT * FROM plans WHERE id = ? OR slug = ?`
+	var p PlanRow
+	err := s.db.GetContext(ctx, &p, s.db.Rebind(q), idOrSlug, idOrSlug)
+	return &p, err
+}
+
+func (s *Store) ListPlans(ctx context.Context, includeArchived bool, limit int, after string) ([]PlanRow, error) {
+	var q string
+	if includeArchived {
+		q = `SELECT * FROM plans WHERE id > ? ORDER BY id ASC LIMIT ?`
+	} else {
+		q = `SELECT * FROM plans WHERE id > ? AND archived_at IS NULL ORDER BY id ASC LIMIT ?`
+	}
+	var ps []PlanRow
+	err := s.db.SelectContext(ctx, &ps, s.db.Rebind(q), after, limit)
+	return ps, err
+}
+
+func (s *Store) ArchivePlan(ctx context.Context, idOrSlug string) error {
+	q := `UPDATE plans SET archived_at = ? WHERE (id = ? OR slug = ?) AND archived_at IS NULL`
+	_, err := s.db.ExecContext(ctx, s.db.Rebind(q), time.Now().UTC().Truncate(time.Second), idOrSlug, idOrSlug)
+	return err
+}
+
+// ─── Subscriptions ─────────────────────────────────────────────────
+
+type SubscriptionRow struct {
+	ID         string     `db:"id"`
+	CustomerID string     `db:"customer_id"`
+	PlanID     string     `db:"plan_id"`
+	StartsAt   time.Time  `db:"starts_at"`
+	EndsAt     *time.Time `db:"ends_at"`
+	CanceledAt *time.Time `db:"canceled_at"`
+	Metadata   *string    `db:"metadata"`
+	CreatedAt  time.Time  `db:"created_at"`
+}
+
+// SubscriptionEntry is the prepared, server-resolved form of a plan entry —
+// ready to materialise. The service layer turns proto PlanEntry + plan +
+// subscription start time into one of these per entry.
+type SubscriptionEntry struct {
+	FeatureID           string
+	UsagePeriodDuration *string
+	UsagePeriodAnchor   *time.Time
+	Grant               *MaterializeGrant
+}
+
+// MaterializeGrant carries the absolute, resolved fields for a grant created
+// as part of subscribe / change. ID / EntitlementID / SubscriptionID /
+// EffectiveAt / CreatedAt are filled in by the store.
+type MaterializeGrant struct {
+	Amount             int64
+	Priority           int32
+	ExpiresAt          *time.Time
+	RecurrenceInterval *string
+	RecurrenceAnchor   *time.Time
+	RolloverMax        *int64
+	RolloverType       *string
+	Metadata           *string
+}
+
+func (s *Store) GetSubscription(ctx context.Context, id string) (*SubscriptionRow, error) {
+	q := `SELECT * FROM subscriptions WHERE id = ?`
+	var sub SubscriptionRow
+	err := s.db.GetContext(ctx, &sub, s.db.Rebind(q), id)
+	return &sub, err
+}
+
+// ListSubscriptions returns subscriptions, optionally scoped to one customer.
+// customerID == "" lists across all customers.
+func (s *Store) ListSubscriptions(ctx context.Context, customerID string, includeCanceled bool, limit int, after string) ([]SubscriptionRow, error) {
+	conds := []string{"id > ?"}
+	args := []any{after}
+	if customerID != "" {
+		conds = append(conds, "customer_id = ?")
+		args = append(args, customerID)
+	}
+	if !includeCanceled {
+		conds = append(conds, "canceled_at IS NULL")
+	}
+	q := `SELECT * FROM subscriptions WHERE ` + strings.Join(conds, " AND ") + ` ORDER BY id ASC LIMIT ?`
+	args = append(args, limit)
+	var subs []SubscriptionRow
+	err := s.db.SelectContext(ctx, &subs, s.db.Rebind(q), args...)
+	return subs, err
+}
+
+// CreateSubscriptionWithMaterialize inserts the subscription row and creates
+// the entitlements + grants implied by `entries`, in a single transaction.
+// Entitlements are reused if (customer_id, feature_id) already has an active
+// row — only newly-created entitlements carry subscription_id, so manual
+// entitlements stay manual.
+func (s *Store) CreateSubscriptionWithMaterialize(ctx context.Context, sub *SubscriptionRow, entries []SubscriptionEntry) error {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.NamedExecContext(ctx, `INSERT INTO subscriptions (id, customer_id, plan_id, starts_at, ends_at, canceled_at, metadata, created_at)
+	      VALUES (:id, :customer_id, :plan_id, :starts_at, :ends_at, :canceled_at, :metadata, :created_at)`, sub); err != nil {
+		return err
+	}
+
+	if err := materializeEntries(ctx, tx, sub, entries); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// CancelSubscription sets canceled_at (and ends_at if unset) on the
+// subscription and voids any active grants it owns.
+func (s *Store) CancelSubscription(ctx context.Context, id string, at time.Time) error {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, tx.Rebind(
+		`UPDATE subscriptions SET canceled_at = ?, ends_at = COALESCE(ends_at, ?) WHERE id = ? AND canceled_at IS NULL`),
+		at, at, id); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, tx.Rebind(
+		`UPDATE grants SET voided_at = ? WHERE subscription_id = ? AND voided_at IS NULL`),
+		at, id); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// ChangeSubscription voids the current subscription's active grants, updates
+// plan_id, and materialises the new plan's entries from effectiveAt.
+// Entitlements are preserved (reused when the new plan covers a feature
+// already entitled).
+func (s *Store) ChangeSubscription(ctx context.Context, sub *SubscriptionRow, newPlanID string, effectiveAt time.Time, entries []SubscriptionEntry) error {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, tx.Rebind(
+		`UPDATE grants SET voided_at = ? WHERE subscription_id = ? AND voided_at IS NULL`),
+		effectiveAt, sub.ID); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, tx.Rebind(
+		`UPDATE subscriptions SET plan_id = ? WHERE id = ?`),
+		newPlanID, sub.ID); err != nil {
+		return err
+	}
+
+	subForMaterialize := *sub
+	subForMaterialize.PlanID = newPlanID
+	subForMaterialize.StartsAt = effectiveAt
+	if err := materializeEntries(ctx, tx, &subForMaterialize, entries); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func materializeEntries(ctx context.Context, tx *sqlx.Tx, sub *SubscriptionRow, entries []SubscriptionEntry) error {
+	for _, e := range entries {
+		var entID string
+		err := tx.GetContext(ctx, &entID,
+			tx.Rebind(`SELECT id FROM entitlements WHERE customer_id = ? AND feature_id = ? AND deleted_at IS NULL`),
+			sub.CustomerID, e.FeatureID)
+		if errors.Is(err, sql.ErrNoRows) {
+			entID = NewULID()
+			ent := EntitlementRow{
+				ID:                  entID,
+				CustomerID:          sub.CustomerID,
+				FeatureID:           e.FeatureID,
+				UsagePeriodDuration: e.UsagePeriodDuration,
+				UsagePeriodAnchor:   e.UsagePeriodAnchor,
+				CreatedAt:           sub.CreatedAt,
+				SubscriptionID:      &sub.ID,
+			}
+			if _, err := tx.NamedExecContext(ctx, `INSERT INTO entitlements (id, customer_id, feature_id, usage_period_duration, usage_period_anchor, created_at, subscription_id)
+		      VALUES (:id, :customer_id, :feature_id, :usage_period_duration, :usage_period_anchor, :created_at, :subscription_id)`, ent); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+
+		if e.Grant != nil {
+			grant := GrantRow{
+				ID:                 NewULID(),
+				EntitlementID:      entID,
+				Amount:             e.Grant.Amount,
+				Priority:           e.Grant.Priority,
+				EffectiveAt:        sub.StartsAt,
+				ExpiresAt:          e.Grant.ExpiresAt,
+				RecurrenceInterval: e.Grant.RecurrenceInterval,
+				RecurrenceAnchor:   e.Grant.RecurrenceAnchor,
+				RolloverMax:        e.Grant.RolloverMax,
+				RolloverType:       e.Grant.RolloverType,
+				Metadata:           e.Grant.Metadata,
+				CreatedAt:          sub.CreatedAt,
+				SubscriptionID:     &sub.ID,
+			}
+			if _, err := tx.NamedExecContext(ctx, `INSERT INTO grants (id, entitlement_id, amount, priority, effective_at, expires_at, recurrence_interval, recurrence_anchor, rollover_max, rollover_type, parent_grant_id, metadata, created_at, subscription_id)
+		      VALUES (:id, :entitlement_id, :amount, :priority, :effective_at, :expires_at, :recurrence_interval, :recurrence_anchor, :rollover_max, :rollover_type, :parent_grant_id, :metadata, :created_at, :subscription_id)`, grant); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
