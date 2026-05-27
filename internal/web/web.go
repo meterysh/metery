@@ -2,8 +2,10 @@ package web
 
 import (
 	"embed"
+	"encoding/json"
 	"html/template"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/meterysh/metery/internal/auth"
@@ -27,7 +29,7 @@ func NewHandler(st *store.Store, sessions *auth.SessionManager) *Handler {
 		tmpl:     template.Must(template.ParseFS(templatesFS, "templates/login.html")),
 		pages:    map[string]*template.Template{},
 	}
-	for _, p := range []string{"index", "meters", "features", "customers", "customer_detail", "meter_detail", "feature_detail"} {
+	for _, p := range []string{"index", "meters", "features", "customers", "customer_detail", "meter_detail", "feature_detail", "plans", "subscriptions"} {
 		h.pages[p] = template.Must(template.ParseFS(
 			templatesFS,
 			"templates/layout.html",
@@ -47,9 +49,11 @@ type layoutData struct {
 
 type overviewData struct {
 	layoutData
-	CustomerCount int
-	MeterCount    int
-	FeatureCount  int
+	CustomerCount     int
+	MeterCount        int
+	FeatureCount      int
+	PlanCount         int
+	SubscriptionCount int
 }
 
 func (h *Handler) Overview(w http.ResponseWriter, r *http.Request) {
@@ -66,6 +70,12 @@ func (h *Handler) Overview(w http.ResponseWriter, r *http.Request) {
 	}
 	if fs, err := h.st.ListFeatures(r.Context(), false, 1000, ""); err == nil {
 		data.FeatureCount = len(fs)
+	}
+	if ps, err := h.st.ListPlans(r.Context(), false, 1000, ""); err == nil {
+		data.PlanCount = len(ps)
+	}
+	if subs, err := h.st.ListSubscriptions(r.Context(), "", false, 1000, ""); err == nil {
+		data.SubscriptionCount = len(subs)
 	}
 	h.render(w, "index", data)
 }
@@ -398,6 +408,135 @@ func (h *Handler) FeatureDetail(w http.ResponseWriter, r *http.Request) {
 		data.ArchivedAt = f.ArchivedAt.Local().Format(time.DateTime)
 	}
 	h.render(w, "feature_detail", data)
+}
+
+// Plans
+
+type planRow struct {
+	ID        string
+	Slug      string
+	Name      string
+	Features  string // comma-joined feature slugs from entries
+	CreatedAt string
+}
+
+type plansData struct {
+	layoutData
+	Plans []planRow
+}
+
+func (h *Handler) PlansPage(w http.ResponseWriter, r *http.Request) {
+	user := h.requireUser(w, r)
+	if user == nil {
+		return
+	}
+	data := plansData{layoutData: layoutData{ActiveTab: "plans", Title: "Plans", User: user}}
+	if ps, err := h.st.ListPlans(r.Context(), false, 50, ""); err == nil {
+		for _, p := range ps {
+			data.Plans = append(data.Plans, planRow{
+				ID:        p.ID,
+				Slug:      p.Slug,
+				Name:      p.Name,
+				Features:  strings.Join(planFeatureSlugs(p.Entries), ", "),
+				CreatedAt: p.CreatedAt.Local().Format(time.DateTime),
+			})
+		}
+	}
+	h.render(w, "plans", data)
+}
+
+// planFeatureSlugs extracts the feature slugs from a plan's stored entries JSON
+// for display, without depending on the proto types.
+func planFeatureSlugs(entriesJSON string) []string {
+	if entriesJSON == "" {
+		return nil
+	}
+	var entries []struct {
+		FeatureSlug string `json:"feature_slug"`
+	}
+	if err := json.Unmarshal([]byte(entriesJSON), &entries); err != nil {
+		return nil
+	}
+	slugs := make([]string, 0, len(entries))
+	for _, e := range entries {
+		slugs = append(slugs, e.FeatureSlug)
+	}
+	return slugs
+}
+
+// Subscriptions
+
+type subscriptionRow struct {
+	ID          string
+	CustomerKey string
+	PlanSlug    string
+	Status      string
+	StartsAt    string
+	CreatedAt   string
+}
+
+type subscriptionsData struct {
+	layoutData
+	Subscriptions []subscriptionRow
+}
+
+func (h *Handler) SubscriptionsPage(w http.ResponseWriter, r *http.Request) {
+	user := h.requireUser(w, r)
+	if user == nil {
+		return
+	}
+	data := subscriptionsData{layoutData: layoutData{ActiveTab: "subscriptions", Title: "Subscriptions", User: user}}
+
+	custKeyByID := map[string]string{}
+	if cs, err := h.st.ListCustomers(r.Context(), 1000, ""); err == nil {
+		for _, c := range cs {
+			custKeyByID[c.ID] = c.Key
+		}
+	}
+	planSlugByID := map[string]string{}
+	if ps, err := h.st.ListPlans(r.Context(), true, 1000, ""); err == nil {
+		for _, p := range ps {
+			planSlugByID[p.ID] = p.Slug
+		}
+	}
+
+	now := time.Now()
+	if subs, err := h.st.ListSubscriptions(r.Context(), "", true, 50, ""); err == nil {
+		for _, s := range subs {
+			ckey := custKeyByID[s.CustomerID]
+			if ckey == "" {
+				ckey = s.CustomerID
+			}
+			pslug := planSlugByID[s.PlanID]
+			if pslug == "" {
+				pslug = s.PlanID
+			}
+			data.Subscriptions = append(data.Subscriptions, subscriptionRow{
+				ID:          s.ID,
+				CustomerKey: ckey,
+				PlanSlug:    pslug,
+				Status:      subscriptionStatus(&s, now),
+				StartsAt:    s.StartsAt.Local().Format(time.DateTime),
+				CreatedAt:   s.CreatedAt.Local().Format(time.DateTime),
+			})
+		}
+	}
+	h.render(w, "subscriptions", data)
+}
+
+// subscriptionStatus derives display status from the row's timestamps —
+// there is no stored status column (see subscription.proto).
+func subscriptionStatus(s *store.SubscriptionRow, now time.Time) string {
+	switch {
+	case s.CanceledAt != nil:
+		return "canceled"
+	case s.EndsAt != nil && !now.Before(*s.EndsAt):
+		return "expired"
+	case now.Before(s.StartsAt):
+		return "pending"
+	default:
+		return "active"
+	}
 }
 
 // Auth helpers
