@@ -1,6 +1,6 @@
 # Metery
 
-Self-hosted usage-billing and entitlements backend.
+Self-hosted metering and entitlements backend.
 
 ## Quick start
 
@@ -83,7 +83,7 @@ A single endpoint serves all protocols via [vanguard-go](https://github.com/conn
 
 ## Core flows
 
-1. **Setup:** Define a **Meter** (how to aggregate events) and a **Feature** (billing capability wrapped around a meter).
+1. **Setup:** Define a **Meter** (how to aggregate events) and a **Feature** (entitlement capability wrapped around a meter).
 2. **Provision:** Create a **Customer** and give them an **Entitlement** to the feature.
 3. **Grant:** Issue **Grants** (credits) to the entitlement.
 4. **Consume:** The app verifies access (`GetEntitlementValue`) and ingests raw usage (`IngestEvent`). 

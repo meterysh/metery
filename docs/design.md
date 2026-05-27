@@ -6,7 +6,7 @@ Last updated: 2026-05-07
 
 ## 1. Overview
 
-Metery is a usage-billing / entitlements backend.
+Metery is a metering and entitlements backend.
 Integrated apps ask Metery two questions:
 
 1. **Can this customer perform this action?** (entitlement check)
@@ -17,7 +17,7 @@ Five core concepts:
 - **Customer** — the billable / addressable entity. Caller creates first.
 - **Meter** — defines how raw events are aggregated into a metric value
   (count, sum, avg, etc.) — server-side aggregation.
-- **Feature** — a named billing capability backed by a meter (metered)
+- **Feature** — a named entitlement capability backed by a meter (metered)
   or simply yes/no access (boolean).
 - **Entitlement** — a `(customer, feature)` access record with optional
   usage-period config.
@@ -39,7 +39,7 @@ and/or period resets.
 - **Meters** define server-side aggregation from raw events:
   `aggregation` (`count` / `sum` / `avg` / `min` / `max` / `unique_count`),
   `event_type` filter, optional `value_property` JSON path.
-- **Features** are billing capabilities. `meter_slug` non-empty ⇒ metered
+- **Features** are entitlement capabilities. `meter_slug` non-empty ⇒ metered
   (uses meter for usage); `meter_slug` empty ⇒ boolean (entitlement
   existence is the access bit).
 - Per-customer **entitlements** scoped to a feature, with optional
@@ -293,7 +293,7 @@ POST /v1/meters
 → { "id": "<ulid>", "slug": "tokens", ... }
 ```
 
-Feature (billing wrapper):
+Feature (entitlement wrapper):
 
 ```
 # Metered — backed by a meter (caller passes slug; server resolves to id)

@@ -1,6 +1,6 @@
 # Metery — Agent guide
 
-Metery is a usage-billing / entitlements backend. v0
+Metery is a metering and entitlements backend. v0
 exposes ledger primitives (customers, meters, features, entitlements,
 grants, raw usage events) over ConnectRPC.
 
@@ -21,7 +21,7 @@ grants, raw usage events) over ConnectRPC.
   `event_type` filter, optional `value_property` JSON path. Dual ID:
   server `id` (ULID) + caller-assigned `slug` (URL-safe).
   Multiple features can share one meter.
-- **Feature** — billing capability. Dual ID: server `id` (ULID) +
+- **Feature** — entitlement capability. Dual ID: server `id` (ULID) +
   caller-assigned `slug`. `meter_slug` set ⇒ metered (uses meter for
   usage); `meter_slug` empty ⇒ boolean (entitlement existence is the
   access bit). No `type` field — `meter_slug` presence is the
