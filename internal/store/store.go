@@ -113,15 +113,18 @@ type EntitlementRow struct {
 	FeatureID           string     `db:"feature_id"`
 	UsagePeriodDuration *string    `db:"usage_period_duration"`
 	UsagePeriodAnchor   *time.Time `db:"usage_period_anchor"`
-	CreatedAt           time.Time  `db:"created_at"`
-	DeletedAt           *time.Time `db:"deleted_at"`
+	// Period-boundary cap on the entitlement's carried balance.
+	// NULL ⇒ unused credits carry over uncapped.
+	RolloverMax *int64     `db:"rollover_max"`
+	CreatedAt   time.Time  `db:"created_at"`
+	DeletedAt   *time.Time `db:"deleted_at"`
 	// NULL ⇒ manually granted. Non-NULL ⇒ materialised from the named subscription.
 	SubscriptionID *string `db:"subscription_id"`
 }
 
 func (s *Store) CreateEntitlement(ctx context.Context, e *EntitlementRow) error {
-	q := `INSERT INTO entitlements (id, customer_id, feature_id, usage_period_duration, usage_period_anchor, created_at, subscription_id)
-	      VALUES (:id, :customer_id, :feature_id, :usage_period_duration, :usage_period_anchor, :created_at, :subscription_id)`
+	q := `INSERT INTO entitlements (id, customer_id, feature_id, usage_period_duration, usage_period_anchor, rollover_max, created_at, subscription_id)
+	      VALUES (:id, :customer_id, :feature_id, :usage_period_duration, :usage_period_anchor, :rollover_max, :created_at, :subscription_id)`
 	_, err := s.db.NamedExecContext(ctx, q, e)
 	return err
 }
@@ -134,53 +137,51 @@ func (s *Store) GetEntitlement(ctx context.Context, customerID, featureID string
 }
 
 type GrantRow struct {
-	ID                 string     `db:"id"`
-	EntitlementID      string     `db:"entitlement_id"`
-	Amount             int64      `db:"amount"`
-	Priority           int32      `db:"priority"`
-	EffectiveAt        time.Time  `db:"effective_at"`
-	ExpiresAt          *time.Time `db:"expires_at"`
-	RecurrenceInterval *string    `db:"recurrence_interval"`
-	RecurrenceAnchor   *time.Time `db:"recurrence_anchor"`
-	RolloverMax        *int64     `db:"rollover_max"`
-	RolloverType       *string    `db:"rollover_type"`
-	ParentGrantID      *string    `db:"parent_grant_id"`
-	Metadata           *string    `db:"metadata"`
-	CreatedAt          time.Time  `db:"created_at"`
-	VoidedAt           *time.Time `db:"voided_at"`
+	ID            string     `db:"id"`
+	EntitlementID string     `db:"entitlement_id"`
+	Amount        int64      `db:"amount"`
+	Priority      int32      `db:"priority"`
+	EffectiveAt   time.Time  `db:"effective_at"`
+	ExpiresAt     *time.Time `db:"expires_at"`
+	Metadata      *string    `db:"metadata"`
+	CreatedAt     time.Time  `db:"created_at"`
+	VoidedAt      *time.Time `db:"voided_at"`
 	// NULL ⇒ manually granted. Non-NULL ⇒ materialised from the named subscription.
 	SubscriptionID *string `db:"subscription_id"`
 }
 
 func (s *Store) CreateGrant(ctx context.Context, g *GrantRow) error {
-	q := `INSERT INTO grants (id, entitlement_id, amount, priority, effective_at, expires_at, recurrence_interval, recurrence_anchor, rollover_max, rollover_type, parent_grant_id, metadata, created_at, subscription_id)
-	      VALUES (:id, :entitlement_id, :amount, :priority, :effective_at, :expires_at, :recurrence_interval, :recurrence_anchor, :rollover_max, :rollover_type, :parent_grant_id, :metadata, :created_at, :subscription_id)`
+	q := `INSERT INTO grants (id, entitlement_id, amount, priority, effective_at, expires_at, metadata, created_at, subscription_id)
+	      VALUES (:id, :entitlement_id, :amount, :priority, :effective_at, :expires_at, :metadata, :created_at, :subscription_id)`
 	_, err := s.db.NamedExecContext(ctx, q, g)
 	return err
 }
 
 func (s *Store) ListActiveGrants(ctx context.Context, entitlementID string) ([]ledger.Grant, error) {
+	// Rollover lives on the entitlement now. One read, applied as the
+	// per-grant period-boundary cap (uniform across grants on this
+	// entitlement).
+	var rolloverMax *int64
+	if err := s.db.GetContext(ctx, &rolloverMax,
+		s.db.Rebind(`SELECT rollover_max FROM entitlements WHERE id = ?`), entitlementID); err != nil {
+		return nil, err
+	}
+
 	q := `SELECT * FROM grants WHERE entitlement_id = ? AND voided_at IS NULL ORDER BY priority ASC, effective_at ASC`
 	var rows []GrantRow
-	err := s.db.SelectContext(ctx, &rows, s.db.Rebind(q), entitlementID)
-	if err != nil {
+	if err := s.db.SelectContext(ctx, &rows, s.db.Rebind(q), entitlementID); err != nil {
 		return nil, err
 	}
 
 	res := make([]ledger.Grant, len(rows))
 	for i, r := range rows {
-		rt := ""
-		if r.RolloverType != nil {
-			rt = *r.RolloverType
-		}
 		res[i] = ledger.Grant{
-			ID:           r.ID,
-			Amount:       r.Amount,
-			Priority:     r.Priority,
-			EffectiveAt:  r.EffectiveAt,
-			ExpiresAt:    r.ExpiresAt,
-			RolloverMax:  r.RolloverMax,
-			RolloverType: rt,
+			ID:          r.ID,
+			Amount:      r.Amount,
+			Priority:    r.Priority,
+			EffectiveAt: r.EffectiveAt,
+			ExpiresAt:   r.ExpiresAt,
+			RolloverMax: rolloverMax,
 		}
 	}
 	return res, nil
@@ -301,17 +302,65 @@ func NewULID() string {
 	return strings.ToLower(ulid.Make().String())
 }
 
-func (s *Store) ListRecurringGrants(ctx context.Context) ([]GrantRow, error) {
-	q := "SELECT * FROM grants WHERE recurrence_interval IS NOT NULL AND voided_at IS NULL AND parent_grant_id IS NULL"
-	var rows []GrantRow
-	err := s.db.SelectContext(ctx, &rows, q)
-	return rows, err
+// RecurringSubscription bundles an active subscription with its plan and
+// the customer's entitlement IDs keyed by feature_id — everything the
+// recurrence worker needs to emit the next cycle's grants without
+// further per-iteration queries.
+type RecurringSubscription struct {
+	Subscription          SubscriptionRow
+	Plan                  PlanRow
+	EntitlementByFeature  map[string]string // feature_id → entitlement_id
 }
 
-func (s *Store) GetLatestChildGrant(ctx context.Context, parentID string) (*GrantRow, error) {
-	q := "SELECT * FROM grants WHERE parent_grant_id = ? ORDER BY effective_at DESC LIMIT 1"
+// ListRecurringSubscriptions returns every active subscription on a plan
+// with a non-NULL recurrence_interval, paired with its plan row and a
+// feature_id → entitlement_id map for the subscription's customer.
+func (s *Store) ListRecurringSubscriptions(ctx context.Context) ([]RecurringSubscription, error) {
+	q := `SELECT s.*
+	      FROM subscriptions s
+	      JOIN plans p ON p.id = s.plan_id
+	      WHERE s.canceled_at IS NULL
+	        AND p.recurrence_interval IS NOT NULL
+	        AND p.archived_at IS NULL`
+	var subs []SubscriptionRow
+	if err := s.db.SelectContext(ctx, &subs, q); err != nil {
+		return nil, err
+	}
+
+	out := make([]RecurringSubscription, 0, len(subs))
+	for _, sub := range subs {
+		plan, err := s.GetPlan(ctx, sub.PlanID)
+		if err != nil {
+			return nil, err
+		}
+
+		ents, err := s.ListEntitlements(ctx, sub.CustomerID, 1000, "")
+		if err != nil {
+			return nil, err
+		}
+		byFeature := make(map[string]string, len(ents))
+		for _, e := range ents {
+			byFeature[e.FeatureID] = e.ID
+		}
+
+		out = append(out, RecurringSubscription{
+			Subscription:         sub,
+			Plan:                 *plan,
+			EntitlementByFeature: byFeature,
+		})
+	}
+	return out, nil
+}
+
+// GetLatestSubscriptionGrant returns the most recent grant emitted by
+// subscriptionID on the given entitlement (by effective_at). Returns
+// nil, sql.ErrNoRows when none exists.
+func (s *Store) GetLatestSubscriptionGrant(ctx context.Context, subscriptionID, entitlementID string) (*GrantRow, error) {
+	q := `SELECT * FROM grants
+	      WHERE subscription_id = ? AND entitlement_id = ?
+	      ORDER BY effective_at DESC LIMIT 1`
 	var row GrantRow
-	err := s.db.GetContext(ctx, &row, s.db.Rebind(q), parentID)
+	err := s.db.GetContext(ctx, &row, s.db.Rebind(q), subscriptionID, entitlementID)
 	if err != nil {
 		return nil, err
 	}
@@ -458,18 +507,20 @@ func (s *Store) SaveSnapshots(ctx context.Context, snaps []ledger.Snapshot, enti
 // ─── Plans ─────────────────────────────────────────────────────────
 
 type PlanRow struct {
-	ID         string     `db:"id"`
-	Slug       string     `db:"slug"`
-	Name       string     `db:"name"`
-	Entries    string     `db:"entries"` // JSON: []PlanEntry, marshalled by service layer
-	Metadata   *string    `db:"metadata"`
-	CreatedAt  time.Time  `db:"created_at"`
-	ArchivedAt *time.Time `db:"archived_at"`
+	ID                 string     `db:"id"`
+	Slug               string     `db:"slug"`
+	Name               string     `db:"name"`
+	Entries            string     `db:"entries"` // JSON: []PlanEntry, marshalled by service layer
+	RecurrenceInterval *string    `db:"recurrence_interval"`
+	RecurrenceAnchor   *time.Time `db:"recurrence_anchor"`
+	Metadata           *string    `db:"metadata"`
+	CreatedAt          time.Time  `db:"created_at"`
+	ArchivedAt         *time.Time `db:"archived_at"`
 }
 
 func (s *Store) CreatePlan(ctx context.Context, p *PlanRow) error {
-	q := `INSERT INTO plans (id, slug, name, entries, metadata, created_at)
-	      VALUES (:id, :slug, :name, :entries, :metadata, :created_at)`
+	q := `INSERT INTO plans (id, slug, name, entries, recurrence_interval, recurrence_anchor, metadata, created_at)
+	      VALUES (:id, :slug, :name, :entries, :recurrence_interval, :recurrence_anchor, :metadata, :created_at)`
 	_, err := s.db.NamedExecContext(ctx, q, p)
 	return err
 }
@@ -514,11 +565,13 @@ type SubscriptionRow struct {
 
 // SubscriptionEntry is the prepared, server-resolved form of a plan entry —
 // ready to materialise. The service layer turns proto PlanEntry + plan +
-// subscription start time into one of these per entry.
+// subscription start time into one of these per entry. Rollover is an
+// entitlement-level (period-boundary) policy.
 type SubscriptionEntry struct {
 	FeatureID           string
 	UsagePeriodDuration *string
 	UsagePeriodAnchor   *time.Time
+	RolloverMax         *int64
 	Grant               *MaterializeGrant
 }
 
@@ -526,14 +579,10 @@ type SubscriptionEntry struct {
 // as part of subscribe / change. ID / EntitlementID / SubscriptionID /
 // EffectiveAt / CreatedAt are filled in by the store.
 type MaterializeGrant struct {
-	Amount             int64
-	Priority           int32
-	ExpiresAt          *time.Time
-	RecurrenceInterval *string
-	RecurrenceAnchor   *time.Time
-	RolloverMax        *int64
-	RolloverType       *string
-	Metadata           *string
+	Amount    int64
+	Priority  int32
+	ExpiresAt *time.Time
+	Metadata  *string
 }
 
 func (s *Store) GetSubscription(ctx context.Context, id string) (*SubscriptionRow, error) {
@@ -657,11 +706,12 @@ func materializeEntries(ctx context.Context, tx *sqlx.Tx, sub *SubscriptionRow, 
 				FeatureID:           e.FeatureID,
 				UsagePeriodDuration: e.UsagePeriodDuration,
 				UsagePeriodAnchor:   e.UsagePeriodAnchor,
+				RolloverMax:         e.RolloverMax,
 				CreatedAt:           sub.CreatedAt,
 				SubscriptionID:      &sub.ID,
 			}
-			if _, err := tx.NamedExecContext(ctx, `INSERT INTO entitlements (id, customer_id, feature_id, usage_period_duration, usage_period_anchor, created_at, subscription_id)
-		      VALUES (:id, :customer_id, :feature_id, :usage_period_duration, :usage_period_anchor, :created_at, :subscription_id)`, ent); err != nil {
+			if _, err := tx.NamedExecContext(ctx, `INSERT INTO entitlements (id, customer_id, feature_id, usage_period_duration, usage_period_anchor, rollover_max, created_at, subscription_id)
+		      VALUES (:id, :customer_id, :feature_id, :usage_period_duration, :usage_period_anchor, :rollover_max, :created_at, :subscription_id)`, ent); err != nil {
 				return err
 			}
 		} else if err != nil {
@@ -670,22 +720,18 @@ func materializeEntries(ctx context.Context, tx *sqlx.Tx, sub *SubscriptionRow, 
 
 		if e.Grant != nil {
 			grant := GrantRow{
-				ID:                 NewULID(),
-				EntitlementID:      entID,
-				Amount:             e.Grant.Amount,
-				Priority:           e.Grant.Priority,
-				EffectiveAt:        sub.StartsAt,
-				ExpiresAt:          e.Grant.ExpiresAt,
-				RecurrenceInterval: e.Grant.RecurrenceInterval,
-				RecurrenceAnchor:   e.Grant.RecurrenceAnchor,
-				RolloverMax:        e.Grant.RolloverMax,
-				RolloverType:       e.Grant.RolloverType,
-				Metadata:           e.Grant.Metadata,
-				CreatedAt:          sub.CreatedAt,
-				SubscriptionID:     &sub.ID,
+				ID:             NewULID(),
+				EntitlementID:  entID,
+				Amount:         e.Grant.Amount,
+				Priority:       e.Grant.Priority,
+				EffectiveAt:    sub.StartsAt,
+				ExpiresAt:      e.Grant.ExpiresAt,
+				Metadata:       e.Grant.Metadata,
+				CreatedAt:      sub.CreatedAt,
+				SubscriptionID: &sub.ID,
 			}
-			if _, err := tx.NamedExecContext(ctx, `INSERT INTO grants (id, entitlement_id, amount, priority, effective_at, expires_at, recurrence_interval, recurrence_anchor, rollover_max, rollover_type, parent_grant_id, metadata, created_at, subscription_id)
-		      VALUES (:id, :entitlement_id, :amount, :priority, :effective_at, :expires_at, :recurrence_interval, :recurrence_anchor, :rollover_max, :rollover_type, :parent_grant_id, :metadata, :created_at, :subscription_id)`, grant); err != nil {
+			if _, err := tx.NamedExecContext(ctx, `INSERT INTO grants (id, entitlement_id, amount, priority, effective_at, expires_at, metadata, created_at, subscription_id)
+		      VALUES (:id, :entitlement_id, :amount, :priority, :effective_at, :expires_at, :metadata, :created_at, :subscription_id)`, grant); err != nil {
 				return err
 			}
 		}

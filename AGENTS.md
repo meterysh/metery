@@ -209,7 +209,7 @@ buf generate       # writes to gen/go/ (committed; consumers don't need buf)
 
 ## Out of scope (unless explicitly requested)
 
-- Plans, Subscriptions, Stripe sync — v1 (see roadmap).
+- Stripe sync / billing adapter — v1+ (Plans & Subscriptions themselves are implemented; pricing stays external, see roadmap).
 - Static entitlements, time-bounded boolean — v1.
 - Atomic check-and-deduct, multi-tenant, webhooks — v1+.
 - Streaming infra (Kafka / ClickHouse) — v1+.

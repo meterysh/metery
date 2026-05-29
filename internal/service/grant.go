@@ -141,15 +141,6 @@ func grantRowToProto(g *store.GrantRow) *meteryv1.Grant {
 	if g.VoidedAt != nil {
 		r.VoidedAt = timestamppb.New(*g.VoidedAt)
 	}
-	if g.RecurrenceInterval != nil {
-		r.Recurrence = &meteryv1.Recurrence{Interval: *g.RecurrenceInterval}
-		if g.RecurrenceAnchor != nil {
-			r.Recurrence.Anchor = timestamppb.New(*g.RecurrenceAnchor)
-		}
-	}
-	if g.RolloverMax != nil && g.RolloverType != nil {
-		r.Rollover = &meteryv1.Rollover{MaxAmount: *g.RolloverMax, Type: *g.RolloverType}
-	}
 	return r
 }
 

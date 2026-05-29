@@ -205,7 +205,6 @@ type grantView struct {
 	Priority    int32
 	EffectiveAt string
 	ExpiresAt   string
-	Recurrence  string
 	Voided      bool
 	CreatedAt   string
 }
@@ -288,9 +287,6 @@ func (h *Handler) CustomerDetail(w http.ResponseWriter, r *http.Request) {
 					}
 					if g.ExpiresAt != nil {
 						gv.ExpiresAt = g.ExpiresAt.Local().Format(time.DateTime)
-					}
-					if g.RecurrenceInterval != nil {
-						gv.Recurrence = *g.RecurrenceInterval
 					}
 					ev.Grants = append(ev.Grants, gv)
 				}
@@ -413,11 +409,12 @@ func (h *Handler) FeatureDetail(w http.ResponseWriter, r *http.Request) {
 // Plans
 
 type planRow struct {
-	ID        string
-	Slug      string
-	Name      string
-	Features  string // comma-joined feature slugs from entries
-	CreatedAt string
+	ID         string
+	Slug       string
+	Name       string
+	Features   string // comma-joined feature slugs from entries
+	Recurrence string // ISO-8601 interval; empty for one-shot plans
+	CreatedAt  string
 }
 
 type plansData struct {
@@ -433,13 +430,17 @@ func (h *Handler) PlansPage(w http.ResponseWriter, r *http.Request) {
 	data := plansData{layoutData: layoutData{ActiveTab: "plans", Title: "Plans", User: user}}
 	if ps, err := h.st.ListPlans(r.Context(), false, 50, ""); err == nil {
 		for _, p := range ps {
-			data.Plans = append(data.Plans, planRow{
+			row := planRow{
 				ID:        p.ID,
 				Slug:      p.Slug,
 				Name:      p.Name,
 				Features:  strings.Join(planFeatureSlugs(p.Entries), ", "),
 				CreatedAt: p.CreatedAt.Local().Format(time.DateTime),
-			})
+			}
+			if p.RecurrenceInterval != nil {
+				row.Recurrence = *p.RecurrenceInterval
+			}
+			data.Plans = append(data.Plans, row)
 		}
 	}
 	h.render(w, "plans", data)

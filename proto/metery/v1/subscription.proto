@@ -48,7 +48,7 @@ message Subscription {
   // Open-ended subscription when absent.
   google.protobuf.Timestamp ends_at = 7;
   // Set when the subscription is cancelled. Once set, the recurrence
-  // worker emits no further child grants for this subscription.
+  // worker emits no further grants for this subscription.
   google.protobuf.Timestamp canceled_at = 8;
 }
 

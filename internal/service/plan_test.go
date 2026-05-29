@@ -18,14 +18,14 @@ func TestCreatePlan_RoundTrip(t *testing.T) {
 	priority := int32(50)
 	resp, err := c.plan.CreatePlan(ctx, connect.NewRequest(&meteryv1.CreatePlanRequest{
 		Slug: "pro", Name: "Pro",
+		Recurrence: &meteryv1.Recurrence{Interval: "P1M"},
 		Entries: []*meteryv1.PlanEntry{{
 			FeatureSlug: "credits",
+			Rollover:    &meteryv1.Rollover{MaxAmount: 500},
 			Grant: &meteryv1.GrantTemplate{
 				Amount:     1000,
 				Priority:   &priority,
-				Recurrence: &meteryv1.Recurrence{Interval: "P1M"},
 				Expiration: &meteryv1.Expiration{Duration: "P1M"},
-				Rollover:   &meteryv1.Rollover{MaxAmount: 500, Type: "remaining"},
 			},
 		}},
 	}))
@@ -40,6 +40,9 @@ func TestCreatePlan_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get plan: %v", err)
 	}
+	if got.Msg.Plan.Recurrence == nil || got.Msg.Plan.Recurrence.Interval != "P1M" {
+		t.Errorf("plan recurrence not preserved: %+v", got.Msg.Plan.Recurrence)
+	}
 	if len(got.Msg.Plan.Entries) != 1 {
 		t.Fatalf("entries len = %d, want 1", len(got.Msg.Plan.Entries))
 	}
@@ -50,14 +53,11 @@ func TestCreatePlan_RoundTrip(t *testing.T) {
 	if e.Grant.Amount != 1000 {
 		t.Errorf("grant amount = %d, want 1000", e.Grant.Amount)
 	}
-	if e.Grant.Recurrence == nil || e.Grant.Recurrence.Interval != "P1M" {
-		t.Errorf("recurrence not preserved: %+v", e.Grant.Recurrence)
-	}
 	if e.Grant.Expiration == nil || e.Grant.Expiration.Duration != "P1M" {
 		t.Errorf("expiration not preserved: %+v", e.Grant.Expiration)
 	}
-	if e.Grant.Rollover == nil || e.Grant.Rollover.MaxAmount != 500 || e.Grant.Rollover.Type != "remaining" {
-		t.Errorf("rollover not preserved: %+v", e.Grant.Rollover)
+	if e.Rollover == nil || e.Rollover.MaxAmount != 500 {
+		t.Errorf("rollover not preserved on entry: %+v", e.Rollover)
 	}
 }
 

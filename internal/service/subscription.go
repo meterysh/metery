@@ -223,6 +223,10 @@ func buildSubscriptionEntries(ctx context.Context, s *Service, p *store.PlanRow,
 				entry.UsagePeriodAnchor = &t
 			}
 		}
+		if pe.Rollover != nil {
+			max := pe.Rollover.MaxAmount
+			entry.RolloverMax = &max
+		}
 
 		if pe.Grant != nil {
 			if feat.MeterID == nil {
@@ -244,20 +248,6 @@ func buildSubscriptionEntries(ctx context.Context, s *Service, p *store.PlanRow,
 				}
 				exp := shiftTime(startsAt, dur)
 				mg.ExpiresAt = &exp
-			}
-			if g.Recurrence != nil {
-				iv := g.Recurrence.Interval
-				mg.RecurrenceInterval = &iv
-				if g.Recurrence.Anchor != nil {
-					t := g.Recurrence.Anchor.AsTime()
-					mg.RecurrenceAnchor = &t
-				}
-			}
-			if g.Rollover != nil {
-				max := g.Rollover.MaxAmount
-				typ := g.Rollover.Type
-				mg.RolloverMax = &max
-				mg.RolloverType = &typ
 			}
 			entry.Grant = mg
 		}

@@ -3,8 +3,9 @@ syntax = "proto3";
 // Plans are templates binding features to grant configurations.
 // Subscribing a customer to a plan materialises the plan's entries
 // into entitlements + grants atomically. Boolean entries create only
-// entitlements; metered entries also create the initial grant
-// (recurring if `grant.recurrence` is set).
+// entitlements; metered entries also create the initial grant. When
+// `Plan.recurrence` is set, the worker emits a fresh grant per entry
+// for every active subscription on each interval boundary.
 //
 // Dual-ID: server-generated ULID `id` + caller-assigned `slug`
 // (URL-safe). Subscriptions and external billing systems reference
@@ -39,9 +40,13 @@ message Plan {
   // Feature bindings — what this plan entitles, with optional grant
   // templates for metered features.
   repeated PlanEntry entries = 4;
-  google.protobuf.Struct metadata = 5;
-  google.protobuf.Timestamp created_at = 6 [(buf.validate.field).required = true];
-  google.protobuf.Timestamp archived_at = 7;
+  // Cadence at which the recurrence worker emits a fresh set of grants
+  // for every active subscription on this plan. Absent ⇒ one-shot
+  // plan: subscribing materialises the initial grants and that's it.
+  Recurrence recurrence = 5;
+  google.protobuf.Struct metadata = 6;
+  google.protobuf.Timestamp created_at = 7 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp archived_at = 8;
 }
 
 // Single feature binding within a plan. Refs Feature by slug.
@@ -64,11 +69,17 @@ message PlanEntry {
   // Grant materialised when a customer subscribes. Required for
   // metered features that should ship with credits; omit for boolean.
   GrantTemplate grant = 3;
+  // Period-boundary policy: how much of an unspent grant survives a
+  // usage_period reset. Denormalised onto each emitted grant at
+  // materialisation time. Omit ⇒ unused credits carry over uncapped.
+  Rollover rollover = 4;
 }
 
 // Subscription-time grant config — what to create when materialising
 // a plan entry. Mirrors CreateGrantRequest fields minus the path keys
-// and `effective_at` (derived from Subscription.starts_at).
+// and `effective_at` (derived from Subscription.starts_at). Cadence
+// lives on Plan.recurrence (one per plan); rollover lives on
+// PlanEntry.rollover.
 message GrantTemplate {
   int64 amount = 1 [
     (buf.validate.field).required = true,
@@ -79,11 +90,8 @@ message GrantTemplate {
     gte: 0
     lte: 1000
   }];
-  // Set ⇒ recurring grant (child grants emitted on schedule); absent ⇒ one-time.
-  Recurrence recurrence = 3;
   // Optional expiration applied to each emitted grant.
-  Expiration expiration = 4;
-  Rollover rollover = 5;
+  Expiration expiration = 3;
 }
 
 service PlanService {
@@ -123,7 +131,10 @@ message CreatePlanRequest {
   ];
   string name = 2 [(buf.validate.field).required = true];
   repeated PlanEntry entries = 3;
-  google.protobuf.Struct metadata = 4;
+  // Cadence at which the worker emits fresh grants for active
+  // subscriptions on this plan. Absent ⇒ one-shot plan.
+  Recurrence recurrence = 4;
+  google.protobuf.Struct metadata = 5;
 }
 message CreatePlanResponse {
   Plan plan = 1 [(buf.validate.field).required = true];

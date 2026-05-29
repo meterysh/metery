@@ -65,7 +65,6 @@
             <th class="px-6 py-3">Priority</th>
             <th class="px-6 py-3">Effective</th>
             <th class="px-6 py-3">Expires</th>
-            <th class="px-6 py-3">Recurrence</th>
             <th class="px-6 py-3">Status</th>
             <th class="px-6 py-3">ID</th>
           </tr>
@@ -77,7 +76,6 @@
             <td class="px-6 py-2.5 text-gray-600 tabular-nums">{{.Priority}}</td>
             <td class="px-6 py-2.5 text-gray-600 tabular-nums">{{.EffectiveAt}}</td>
             <td class="px-6 py-2.5 text-gray-600 tabular-nums">{{if .ExpiresAt}}{{.ExpiresAt}}{{else}}<span class="text-gray-400">&mdash;</span>{{end}}</td>
-            <td class="px-6 py-2.5">{{if .Recurrence}}<code class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs border border-gray-200">{{.Recurrence}}</code>{{else}}<span class="text-gray-400">&mdash;</span>{{end}}</td>
             <td class="px-6 py-2.5">
               {{if .Voided}}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">Voided</span>
               {{else}}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">Active</span>{{end}}

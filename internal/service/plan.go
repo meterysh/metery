@@ -44,6 +44,14 @@ func (s *Service) CreatePlan(ctx context.Context, req *connect.Request[meteryv1.
 		Metadata:  metaStr,
 		CreatedAt: time.Now().UTC().Truncate(time.Second),
 	}
+	if r := req.Msg.Recurrence; r != nil {
+		iv := r.Interval
+		p.RecurrenceInterval = &iv
+		if r.Anchor != nil {
+			t := r.Anchor.AsTime()
+			p.RecurrenceAnchor = &t
+		}
+	}
 	if err := s.store.CreatePlan(ctx, p); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -109,6 +117,12 @@ func planRowToProto(p *store.PlanRow) (*meteryv1.Plan, error) {
 		Name:      p.Name,
 		Entries:   entries,
 		CreatedAt: timestamppb.New(p.CreatedAt),
+	}
+	if p.RecurrenceInterval != nil {
+		plan.Recurrence = &meteryv1.Recurrence{Interval: *p.RecurrenceInterval}
+		if p.RecurrenceAnchor != nil {
+			plan.Recurrence.Anchor = timestamppb.New(*p.RecurrenceAnchor)
+		}
 	}
 	if p.ArchivedAt != nil {
 		plan.ArchivedAt = timestamppb.New(*p.ArchivedAt)

@@ -135,7 +135,7 @@ Connect and gRPC clients call the same endpoints under `/metery.v1.*Service/<RPC
 
 ## Worker
 
-Grants can be configured to recur periodically (e.g., monthly resets). The worker scans and emits new grants automatically.
+Plans carry a recurrence cadence (e.g., monthly). The worker walks active subscriptions and emits a fresh grant per plan entry each interval automatically.
 
 Deploy as a long-lived process alongside the server:
 
