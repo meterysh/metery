@@ -153,6 +153,8 @@ func main() {
 			entitlementPath, entitlementHandler := meteryv1connect.NewEntitlementServiceHandler(srv, interceptors)
 			grantPath, grantHandler := meteryv1connect.NewGrantServiceHandler(srv, interceptors)
 			eventPath, eventHandler := meteryv1connect.NewEventServiceHandler(srv, interceptors)
+			planPath, planHandler := meteryv1connect.NewPlanServiceHandler(srv, interceptors)
+			subscriptionPath, subscriptionHandler := meteryv1connect.NewSubscriptionServiceHandler(srv, interceptors)
 
 			restOpts := vanguard.WithRESTUnmarshalOptions(vanguard.RESTUnmarshalOptions{
 				DiscardUnknownQueryParams: true,
@@ -165,6 +167,8 @@ func main() {
 				vanguard.NewService(entitlementPath, entitlementHandler, restOpts),
 				vanguard.NewService(grantPath, grantHandler, restOpts),
 				vanguard.NewService(eventPath, eventHandler, restOpts),
+				vanguard.NewService(planPath, planHandler, restOpts),
+				vanguard.NewService(subscriptionPath, subscriptionHandler, restOpts),
 			}
 
 			transcoder, err := vanguard.NewTranscoder(services,
@@ -191,6 +195,8 @@ func main() {
 			mux.HandleFunc("GET /features/{id_or_slug}", webHandler.FeatureDetail)
 			mux.HandleFunc("GET /customers", webHandler.CustomersPage)
 			mux.HandleFunc("GET /customers/{id_or_key}", webHandler.CustomerDetail)
+			mux.HandleFunc("GET /plans", webHandler.PlansPage)
+			mux.HandleFunc("GET /subscriptions", webHandler.SubscriptionsPage)
 			mux.Handle("/", transcoder)
 			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)

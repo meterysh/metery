@@ -35,19 +35,15 @@ message Expiration {
   ]; // ISO-8601, e.g. "P1M"
 }
 
+// Rollover is the period-boundary policy: how much of the unused
+// balance survives a usage_period reset. 0 = use-it-or-lose-it.
+// Absent ⇒ unused carries over uncapped. Lives on Entitlement
+// (period-policy beside period-definition); plan-driven
+// materialisation copies it from PlanEntry.rollover at subscribe time.
 message Rollover {
   int64 max_amount = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).int64.gt = 0
-  ];
-  string type = 2 [
-    (buf.validate.field).required = true,
-    (buf.validate.field).string = {
-      in: [
-        "original",
-        "remaining"
-      ]
-    }
+    (buf.validate.field).int64.gte = 0
   ];
 }
 

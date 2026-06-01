@@ -48,7 +48,7 @@ the ledger or breaking existing API contracts. Anchored to
 - [x] `store` package — repository interface + Postgres impl + SQLite impl. v0 tests run against SQLite only; Postgres tests deferred to v1.
 - [x] Auth middleware — bearer header parsing, `API_KEYS` env loading, constant-time compare, `UNAUTHENTICATED` for missing/invalid.
 - [x] Wire up Connect handlers (and REST transcoder via `vanguard-go`) + handler-level smoke test from §6.0.
-- [x] Minimal in-process recurrence worker — emits child grants on schedule; idempotent via `(parent_grant_id, effective_at)` unique constraint.
+- [x] Minimal in-process recurrence worker — walks active subscriptions × plan entries and emits a grant per entry on the plan's cadence; idempotent via `(subscription_id, entitlement_id, effective_at)` unique index.
 
 ## v1 — plans, subscriptions, billing sync
 
@@ -64,7 +64,8 @@ Adds, on top of v0:
   v0 env keys import as a one-shot migration. Still admin-only auth;
   scopes deferred to v1+.
 - **`Plan`** entity — a template binding features → grant configurations
-  (amounts, recurrence, expiration, rollover).
+  (amounts, expiration), with the recurrence cadence at the plan level and
+  rollover on each entry.
 - **`Subscription`** entity — links customer → plan with start/end dates;
   subscribing materialises the plan into entitlements + grants atomically;
   unsubscribing voids the recurring grants.

@@ -38,7 +38,7 @@ brews:
       owner: meterysh
       name: homebrew-tap
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    description: "Self-hosted usage-billing and entitlements backend"
+    description: "Self-hosted metering and entitlements backend"
     homepage: "https://github.com/meterysh/metery"
     license: "Apache-2.0"
 changelog:

@@ -67,12 +67,11 @@ func TestCalculateBalance_WithPeriodsAndRollover(t *testing.T) {
 
 	grants := []Grant{
 		{
-			ID:           "g1",
-			Amount:       100,
-			Priority:     100,
-			EffectiveAt:  mustParseTime("2026-01-01T00:00:00Z"),
-			RolloverMax:  ptr(int64(50)),
-			RolloverType: "original",
+			ID:          "g1",
+			Amount:      100,
+			Priority:    100,
+			EffectiveAt: mustParseTime("2026-01-01T00:00:00Z"),
+			RolloverMax: ptr(int64(50)),
 		},
 	}
 

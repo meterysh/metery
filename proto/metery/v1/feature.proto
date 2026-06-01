@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-// Features are named billing capabilities.
+// Features are named entitlement capabilities.
 //   meter_slug non-empty ⇒ metered (server resolves slug → meter id,
 //                           stores Feature.meter_id; aggregates events).
 //   meter_slug empty     ⇒ boolean (entitlement existence is the bit).

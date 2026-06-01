@@ -8,13 +8,14 @@ import (
 )
 
 type Grant struct {
-	ID           string
-	Amount       int64
-	Priority     int32
-	EffectiveAt  time.Time
-	ExpiresAt    *time.Time
-	RolloverMax  *int64
-	RolloverType string // "original", "remaining", or ""
+	ID          string
+	Amount      int64
+	Priority    int32
+	EffectiveAt time.Time
+	ExpiresAt   *time.Time
+	// Period-boundary cap, sourced from the grant's entitlement.
+	// nil ⇒ unused balance carries over uncapped.
+	RolloverMax *int64
 }
 
 type Entitlement struct {
@@ -191,14 +192,8 @@ func CalculateBalance(
 				if ag.ExpiresAt != nil && !ag.ExpiresAt.After(p.To) {
 					continue
 				}
-				if ag.RolloverMax != nil {
-					maxRollover := *ag.RolloverMax
-					if ag.RolloverType == "original" && ag.Amount < maxRollover {
-						maxRollover = ag.Amount
-					}
-					if ag.Remaining > maxRollover {
-						ag.Remaining = maxRollover
-					}
+				if ag.RolloverMax != nil && ag.Remaining > *ag.RolloverMax {
+					ag.Remaining = *ag.RolloverMax
 				}
 				if ag.Remaining > 0 {
 					rolledOver = append(rolledOver, ag)

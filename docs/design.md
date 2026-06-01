@@ -6,7 +6,7 @@ Last updated: 2026-05-07
 
 ## 1. Overview
 
-Metery is a usage-billing / entitlements backend.
+Metery is a metering and entitlements backend.
 Integrated apps ask Metery two questions:
 
 1. **Can this customer perform this action?** (entitlement check)
@@ -17,17 +17,19 @@ Five core concepts:
 - **Customer** — the billable / addressable entity. Caller creates first.
 - **Meter** — defines how raw events are aggregated into a metric value
   (count, sum, avg, etc.) — server-side aggregation.
-- **Feature** — a named billing capability backed by a meter (metered)
+- **Feature** — a named entitlement capability backed by a meter (metered)
   or simply yes/no access (boolean).
 - **Entitlement** — a `(customer, feature)` access record with optional
-  usage-period config.
-- **Grant** — credits added to a metered entitlement, with priority,
-  expiration, recurrence, and rollover.
+  usage-period config and a period-boundary rollover cap.
+- **Grant** — credits added to a metered entitlement, with priority and
+  expiration. A pure ledger event; cadence is on the plan, rollover on
+  the entitlement.
 
 Raw usage events flow in through `IngestEvent`; the meter associated
 with each metered feature aggregates them into usage that draws down
-grant credits. Subscriptions (v1+) top balances up via recurring grants
-and/or period resets.
+grant credits. Subscriptions top balances up: a plan's `recurrence`
+cadence drives the worker to emit fresh grants, and entitlements reset
+per their usage-period.
 
 ## 2. Goals (v0)
 
@@ -39,13 +41,14 @@ and/or period resets.
 - **Meters** define server-side aggregation from raw events:
   `aggregation` (`count` / `sum` / `avg` / `min` / `max` / `unique_count`),
   `event_type` filter, optional `value_property` JSON path.
-- **Features** are billing capabilities. `meter_slug` non-empty ⇒ metered
+- **Features** are entitlement capabilities. `meter_slug` non-empty ⇒ metered
   (uses meter for usage); `meter_slug` empty ⇒ boolean (entitlement
   existence is the access bit).
 - Per-customer **entitlements** scoped to a feature, with optional
   periodic reset (metered only).
-- **Grants** that add credits to a metered entitlement, with priority,
-  expiration, recurrence, and rollover at period boundary.
+- **Grants** that add credits to a metered entitlement, with priority and
+  expiration. Recurrence (plan-level) and rollover (entitlement-level) are
+  configured off the grant — see §5.
 - Two read paths (uniform API, dispatched by feature kind):
   - `has_access(customer, feature [, cost])` → bool
   - `value(customer, feature)` → metered: balance + period window;
@@ -93,8 +96,10 @@ metric value. Boolean features are pure yes/no access checks.
 | **Customer**    | First-class billable entity. Server-generated `id` (ULID, lowercase Crockford) + caller-assigned `key` (opaque, unique). What other resources reference. |
 | **Meter**       | Server-side aggregation definition: `aggregation` (count/sum/…), `event_type` filter, `value_property` JSON path. Multiple features can wrap one meter. |
 | **Feature**     | Billing capability. `meter_slug` set ⇒ metered (uses meter for usage); empty ⇒ boolean (entitlement existence is the access bit). |
-| **Entitlement** | A `(customer, feature)` access record. For metered features, also carries usage-period config. |
-| **Grant**       | Credits added to one *metered* entitlement. Has priority, expiry, recurrence, rollover. |
+| **Entitlement** | A `(customer, feature)` access record. For metered features, also carries usage-period config and the rollover cap applied at each period boundary. |
+| **Grant**       | Credits added to one *metered* entitlement. A pure ledger event: amount, priority, effective/expiry. Cadence lives on the Plan; rollover on the Entitlement. |
+| **Plan**        | Template binding features to grant configs. Carries the `recurrence` cadence — the worker emits a fresh set of grants per active subscription each interval. |
+| **Subscription**| Binds a customer to a plan over time. Materialises the plan's entries into entitlements + grants; the worker tops them up on the plan's cadence. |
 | **Usage event** | Append-only raw observation: `id`, `customer`, `type`, `time`, `payload`. Server aggregates via meter. |
 | **Ledger**      | The set of grants + usage events for metered features. Balance is derived: grants minus aggregated usage. |
 
@@ -128,18 +133,29 @@ ties broken by `effective_at`.
 
 ## 5. Grants & resets
 
-**Grant fields:**
+**Grant fields** (a grant is a pure ledger event — no cadence, no rollover):
 
 - `amount` — credits granted.
 - `priority` — burn order; lower = consumed first. Default `100`.
 - `effective_at` — when the grant becomes spendable.
 - `expiration.duration` — how long after `effective_at` the grant remains
   valid. Unconsumed credits past expiry are forfeit.
-- `recurrence.interval` + `recurrence.anchor` — auto-emit a new grant on
-  schedule (e.g. monthly subscription top-up).
-- `rollover.max_amount` — max credits that survive an entitlement reset.
-- `rollover.type` — `"original"` (cap at original grant size) or
-  `"remaining"` (cap at what's still unused).
+
+Recurrence and rollover used to live here; they moved (see below).
+`CreateGrant` is now **one-shot only** — topups, earn-backs, admin comps.
+Recurring credits come from subscribing to a plan.
+
+**Where cadence and rollover live now:**
+
+- **Cadence** is on the **Plan** (`Plan.recurrence`) — one interval per
+  plan. "Pro monthly" and "Pro annual" are two plans, mirroring Stripe's
+  "billing interval lives on the Price". The worker walks
+  `subscriptions × plan.entries` and emits a fresh grant per entry each
+  interval.
+- **Rollover** is on the **Entitlement** (`rollover_max`) — period-boundary
+  policy sits next to the period definition. A single non-negative cap:
+  `0` = use-it-or-lose-it, absent = carry over uncapped. Plan-driven
+  materialisation copies it from `PlanEntry.rollover` at subscribe time.
 
 **Entitlement reset:**
 
@@ -149,27 +165,28 @@ period boundary:
 
 1. Usage counter for the new period starts at zero (we don't count events
    from before the boundary against the new balance).
-2. Each active grant's surviving amount is computed via its rollover
-   policy. Anything beyond `rollover.max_amount` is voided.
-3. Recurring grants emit a new grant for the new period, governed by their
-   own `recurrence` config (independent of the entitlement reset).
+2. Each active grant's surviving balance is capped at the entitlement's
+   `rollover_max` (absent ⇒ uncapped, `0` ⇒ nothing survives).
+3. Grant *emission* is independent of the reset: the recurrence worker
+   tops up subscribed entitlements on the plan's cadence (§9).
 
 Resets can also be **triggered manually** via API (e.g. plan upgrade).
 
-**Subscription mapping (forward-looking).**
-A "Pro plan: 10k api_calls/month + 1M tokens/month" subscription becomes
-**two entitlements** for the customer:
+**Subscription mapping.**
+A "Pro plan: 10k api_calls/month + 1M tokens/month" plan carries
+`recurrence = P1M` and two entries. Subscribing a customer becomes
+**two entitlements**:
 
-- `(customer, api_calls)` with `usage_period = P1M`, anchored to
-  subscription start, plus a recurring grant of `amount = 10_000`,
-  `recurrence = P1M`, `expiration = P1M`, `rollover.max_amount = 0`.
-- `(customer, tokens)` with the same period config, plus a recurring grant
-  of `amount = 1_000_000`, same recurrence/expiration/rollover.
+- `(customer, api_calls)` with `usage_period = P1M` anchored to the
+  subscription start, an initial grant of `amount = 10_000`,
+  `expiration = P1M`, and `rollover_max = 0` on the entitlement.
+- `(customer, tokens)` with the same period config and an initial grant
+  of `amount = 1_000_000`.
 
-Add-on packs (e.g. "buy 5k extra api_calls") become non-recurring grants
-on the corresponding entitlement, with their own expiration and a
-priority chosen so they burn before or after the monthly allowance —
-caller's choice.
+The worker then emits the next month's grant per entry each cycle. Add-on
+packs (e.g. "buy 5k extra api_calls") become one-shot `CreateGrant`s on
+the corresponding entitlement, with their own expiration and a priority
+chosen so they burn before or after the plan allowance — caller's choice.
 
 ## 6. Core flows
 
@@ -293,7 +310,7 @@ POST /v1/meters
 → { "id": "<ulid>", "slug": "tokens", ... }
 ```
 
-Feature (billing wrapper):
+Feature (entitlement wrapper):
 
 ```
 # Metered — backed by a meter (caller passes slug; server resolves to id)
@@ -315,7 +332,7 @@ POST /v1/customers/user_123/entitlements
 }
 ```
 
-### 6.3 Grant credits
+### 6.3 Grant credits (one-shot — topups, earn-backs, comps)
 
 ```
 POST /v1/customers/user_123/entitlements/tokens/grants
@@ -323,11 +340,13 @@ POST /v1/customers/user_123/entitlements/tokens/grants
   "amount":       "1000000",
   "priority":     100,
   "effective_at": "2026-05-01T00:00:00Z",
-  "expiration":   { "duration": "P1M" },
-  "recurrence":   { "interval": "P1M", "anchor": "2026-05-01T00:00:00Z" },
-  "rollover":     { "max_amount": "0", "type": "remaining" }
+  "expiration":   { "duration": "P1M" }
 }
 ```
+
+Recurring credits don't come from here — they come from subscribing to a
+plan whose `recurrence` drives the worker. Rollover is configured on the
+entitlement (or the plan entry that materialises it), not the grant.
 
 ### 6.4 Check access (hot path, called by integrated app's cost center)
 
@@ -503,12 +522,16 @@ CREATE TABLE entitlements (
   feature_id               TEXT NOT NULL REFERENCES features(id),
   usage_period_duration    TEXT,                        -- "P1M"; NULL = no reset
   usage_period_anchor      TIMESTAMPTZ,
+  rollover_max             BIGINT,                       -- period-boundary cap; NULL = uncapped, 0 = use-it-or-lose-it
   created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at               TIMESTAMPTZ
+  deleted_at               TIMESTAMPTZ,
+  subscription_id          TEXT REFERENCES subscriptions(id)  -- NULL ⇒ manual; set ⇒ materialised from a plan
 );
 CREATE UNIQUE INDEX entitlements_active_uniq
   ON entitlements (customer_id, feature_id) WHERE deleted_at IS NULL;
 
+-- A grant is a pure ledger event. Cadence lives on the plan
+-- (subscriptions drive emission); rollover lives on the entitlement.
 CREATE TABLE grants (
   id                  TEXT PRIMARY KEY,
   entitlement_id      TEXT NOT NULL REFERENCES entitlements(id),
@@ -516,18 +539,18 @@ CREATE TABLE grants (
   priority            INT    NOT NULL DEFAULT 100,
   effective_at        TIMESTAMPTZ NOT NULL,
   expires_at          TIMESTAMPTZ,                      -- effective_at + expiration.duration
-  recurrence_interval TEXT,                             -- "P1M" or NULL
-  recurrence_anchor   TIMESTAMPTZ,
-  rollover_max        BIGINT,                           -- NULL = no rollover
-  rollover_type       TEXT,                             -- 'original' | 'remaining'
-  parent_grant_id     TEXT REFERENCES grants(id),       -- recurring chain; internal — not exposed on the wire
   metadata            JSONB,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  voided_at           TIMESTAMPTZ                       -- soft-void
+  voided_at           TIMESTAMPTZ,                      -- soft-void
+  subscription_id     TEXT REFERENCES subscriptions(id) -- NULL ⇒ manual (CreateGrant); set ⇒ emitted for a subscription
 );
 CREATE INDEX grants_by_entitlement_active
   ON grants (entitlement_id, priority, effective_at)
   WHERE voided_at IS NULL;
+-- Worker idempotency: at most one emitted grant per (subscription, entitlement, cycle).
+CREATE UNIQUE INDEX grants_subscription_emission_uniq
+  ON grants (subscription_id, entitlement_id, effective_at)
+  WHERE subscription_id IS NOT NULL AND voided_at IS NULL;
 
 -- Server bookkeeping columns (`created_at`, `processed_at`) are
 -- internal — not exposed on the wire.
@@ -617,15 +640,17 @@ current period only.
   to "advance" entitlements.
 - **Recurring grant emission**, however, *does* need a background worker
   because new grants must materialize as rows so they show up in queries.
-  v0 approach: a periodic worker scans `grants WHERE recurrence_interval IS
-  NOT NULL` and emits the next child grant when due. Idempotent via
-  `(parent_grant_id, effective_at)` uniqueness.
+  Approach: a periodic worker walks active subscriptions joined to their
+  plan's entries (`plans.recurrence_interval IS NOT NULL`), and for each
+  entry emits the next grant when due, dated off the last emission (or the
+  subscription start). Idempotent via the
+  `(subscription_id, entitlement_id, effective_at)` unique index.
 - **Recurrence catchup on restart**: the worker ticks every minute and
-  emits one child grant per tick. After a downtime spanning N missed
-  periods, it takes N minutes to fully catch up. During that window,
-  balance reads for affected entitlements are understated — the missing
-  grants haven't materialised yet. Acceptable for v0. A startup sweep
-  (emit all overdue children in a single pass before the ticker starts)
+  emits one grant per due (subscription, entry) per tick. After a downtime
+  spanning N missed periods, it takes N minutes to fully catch up. During
+  that window, balance reads for affected entitlements are understated —
+  the missing grants haven't materialised yet. Acceptable for v0. A startup
+  sweep (emit all overdue grants in a single pass before the ticker starts)
   would close this gap if needed.
 
 ## 10. Architecture (one paragraph)
@@ -633,8 +658,8 @@ current period only.
 A single Go service exposing a REST API, talking to Postgres. Three
 internal packages: `entitlement` (domain types + balance computation),
 `store` (Postgres / SQLite repository), `api` (HTTP handlers). A
-background `recurrence` worker emits child grants on schedule. No queues,
-no caches in v0.
+background `recurrence` worker emits subscription grants on the plan's
+cadence. No queues, no caches in v0.
 
 ```
 ┌──────────┐   HTTP    ┌──────────────────────────────┐    SQL    ┌──────────┐
@@ -687,8 +712,8 @@ before any handlers exist.** Each fixture is a declarative scenario —
 a set of grants and events plus an expected balance at `T`. The
 `entitlement` package's compute function takes the inputs and is
 asserted against the expected output. This forces us to nail priority
-ordering, period rollover (anchor + duration math), rollover policy
-(`original` vs `remaining`), and expiration before we wrap it in any
+ordering, period rollover (anchor + duration math, capped at the
+entitlement's `rollover_max`), and expiration before we wrap it in any
 SQL. If the fixtures pass, everything above is plumbing.
 
 **Principle 2: v0 runs tests against SQLite only.** Both drivers exist

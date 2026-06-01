@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 // Meters define how raw events are aggregated into metric values.
-// Features wrap meters for billing semantics.
+// Features wrap meters for entitlement semantics.
 //
 // Allowed `aggregation` values: count | sum | avg | min | max | unique_count.
 // `value_property` is a JSON path on UsageEvent.payload; required for

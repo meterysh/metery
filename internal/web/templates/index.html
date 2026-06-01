@@ -19,17 +19,32 @@
     </div>
   </a>
 
-  <a href="/meters" class="bg-white rounded-xl border border-gray-200 p-6 flex flex-col gap-4 shadow-sm hover:shadow-md hover:border-brand-300 transition-colors group">
+  <a href="/subscriptions" class="bg-white rounded-xl border border-gray-200 p-6 flex flex-col gap-4 shadow-sm hover:shadow-md hover:border-brand-300 transition-colors group">
     <div class="w-10 h-10 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center group-hover:bg-brand-100 transition-colors">
       <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="20" x2="18" y2="10"/>
-        <line x1="12" y1="20" x2="12" y2="4"/>
-        <line x1="6" y1="20" x2="6" y2="14"/>
+        <polyline points="23 4 23 10 17 10"/>
+        <polyline points="1 20 1 14 7 14"/>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
       </svg>
     </div>
     <div>
-      <div class="text-4xl font-extrabold text-gray-900 tracking-tight tabular-nums">{{.MeterCount}}</div>
-      <div class="text-sm font-medium text-gray-500 mt-1 uppercase tracking-wider">Meters</div>
+      <div class="text-4xl font-extrabold text-gray-900 tracking-tight tabular-nums">{{.SubscriptionCount}}</div>
+      <div class="text-sm font-medium text-gray-500 mt-1 uppercase tracking-wider">Subscriptions</div>
+    </div>
+  </a>
+
+  <a href="/plans" class="bg-white rounded-xl border border-gray-200 p-6 flex flex-col gap-4 shadow-sm hover:shadow-md hover:border-brand-300 transition-colors group">
+    <div class="w-10 h-10 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center group-hover:bg-brand-100 transition-colors">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="3" width="6" height="4" rx="1"/>
+        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+        <line x1="9" y1="12" x2="15" y2="12"/>
+        <line x1="9" y1="16" x2="15" y2="16"/>
+      </svg>
+    </div>
+    <div>
+      <div class="text-4xl font-extrabold text-gray-900 tracking-tight tabular-nums">{{.PlanCount}}</div>
+      <div class="text-sm font-medium text-gray-500 mt-1 uppercase tracking-wider">Plans</div>
     </div>
   </a>
 
@@ -42,6 +57,20 @@
     <div>
       <div class="text-4xl font-extrabold text-gray-900 tracking-tight tabular-nums">{{.FeatureCount}}</div>
       <div class="text-sm font-medium text-gray-500 mt-1 uppercase tracking-wider">Features</div>
+    </div>
+  </a>
+
+  <a href="/meters" class="bg-white rounded-xl border border-gray-200 p-6 flex flex-col gap-4 shadow-sm hover:shadow-md hover:border-brand-300 transition-colors group">
+    <div class="w-10 h-10 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center group-hover:bg-brand-100 transition-colors">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="20" x2="18" y2="10"/>
+        <line x1="12" y1="20" x2="12" y2="4"/>
+        <line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+    </div>
+    <div>
+      <div class="text-4xl font-extrabold text-gray-900 tracking-tight tabular-nums">{{.MeterCount}}</div>
+      <div class="text-sm font-medium text-gray-500 mt-1 uppercase tracking-wider">Meters</div>
     </div>
   </a>
 </div>

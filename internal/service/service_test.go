@@ -25,10 +25,13 @@ import (
 )
 
 func setupTestServer(t *testing.T) (*store.Store, *httptest.Server) {
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	// Per-test in-memory DB so state doesn't leak across tests.
+	dbName := "test_" + store.NewULID()
+	db, err := sql.Open("sqlite", "file:"+dbName+"?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}
+	t.Cleanup(func() { db.Close() })
 
 	goose.SetBaseFS(migrations.FS)
 	if err := goose.SetDialect("sqlite"); err != nil {
@@ -51,6 +54,8 @@ func setupTestServer(t *testing.T) (*store.Store, *httptest.Server) {
 		vanguard.NewService(meteryv1connect.NewEntitlementServiceHandler(srv, opts)),
 		vanguard.NewService(meteryv1connect.NewGrantServiceHandler(srv, opts)),
 		vanguard.NewService(meteryv1connect.NewEventServiceHandler(srv, opts)),
+		vanguard.NewService(meteryv1connect.NewPlanServiceHandler(srv, opts)),
+		vanguard.NewService(meteryv1connect.NewSubscriptionServiceHandler(srv, opts)),
 	}
 
 	transcoder, err := vanguard.NewTranscoder(services,

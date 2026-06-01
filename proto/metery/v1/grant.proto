@@ -2,6 +2,12 @@ syntax = "proto3";
 
 // Grants add credits to a metered entitlement. Boolean features cannot
 // receive grants — those are validated at service boundary.
+//
+// CreateGrant is one-shot only — topups, earn-backs, admin comps.
+// Recurring credits come from subscribing to a plan whose
+// `recurrence` drives the worker. Rollover policy lives on
+// PlanEntry; the per-grant DB row holds the denormalised copy for the
+// ledger but it isn't on the wire.
 package metery.v1;
 
 import "buf/validate/validate.proto";
@@ -32,15 +38,11 @@ message Grant {
       lte: 1000
     }
   ]; // lower number burns first
-  Recurrence recurrence = 5; // optional
-  Rollover rollover = 6; // optional
-  google.protobuf.Struct metadata = 7;
-  google.protobuf.Timestamp created_at = 8 [(buf.validate.field).required = true];
-  google.protobuf.Timestamp effective_at = 9 [(buf.validate.field).required = true];
-  google.protobuf.Timestamp expires_at = 10; // null = no expiration
-  google.protobuf.Timestamp voided_at = 11; // null on active grants
-  // parent_grant_id (recurrence lineage) is server-internal storage —
-  // not exposed on the wire. See docs/design.md §7.
+  google.protobuf.Struct metadata = 5;
+  google.protobuf.Timestamp created_at = 6 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp effective_at = 7 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp expires_at = 8; // null = no expiration
+  google.protobuf.Timestamp voided_at = 9; // null on active grants
 }
 
 service GrantService {
@@ -75,10 +77,8 @@ message CreateGrantRequest {
     lte: 1000
   }];
   Expiration expiration = 5; // optional
-  Recurrence recurrence = 6; // optional
-  Rollover rollover = 7; // optional
-  google.protobuf.Struct metadata = 8;
-  google.protobuf.Timestamp effective_at = 9; // default now
+  google.protobuf.Struct metadata = 6;
+  google.protobuf.Timestamp effective_at = 7; // default now
 }
 message CreateGrantResponse {
   Grant grant = 1 [(buf.validate.field).required = true];

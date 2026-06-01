@@ -1,0 +1,169 @@
+syntax = "proto3";
+
+// Subscriptions bind a customer to a plan over a time range. Creating
+// a subscription materialises the plan's entries into entitlements +
+// grants atomically; cancelling voids the subscription-owned recurring
+// grants. Future periods are produced by the recurrence worker.
+//
+// A customer may hold multiple concurrent subscriptions (different plans).
+// Subscriptions are addressed by their server-generated ULID `id`.
+// External identifiers (e.g. Stripe Subscription ID) live in
+// `metadata`; the caller is expected to maintain its own mapping.
+//
+// Cross-references on the entity use caller-friendly identifiers —
+// `customer_key`, `plan_slug` (both immutable on this record). To
+// switch a customer to a different plan use ChangeSubscription, which
+// replaces the recurring grants without disturbing existing usage.
+//
+// Stripe sync (deferred): Metery is a downstream materialised view of
+// Stripe subscription state. v1 ships the entity + RPCs; the adapter
+// arrives separately.
+package metery.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/meterysh/metery/gen/go/metery/v1;meteryv1";
+
+message Subscription {
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"
+  ]; // server-generated ULID
+  // Customer.key — FK reference, immutable.
+  string customer_key = 2 [(buf.validate.field).required = true];
+  // Plan.slug — current plan. Updated by ChangeSubscription.
+  string plan_slug = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {
+      max_len: 64
+      pattern: "^[a-z][a-z0-9_]*$"
+    }
+  ];
+  google.protobuf.Struct metadata = 4;
+  google.protobuf.Timestamp created_at = 5 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp starts_at = 6 [(buf.validate.field).required = true];
+  // Open-ended subscription when absent.
+  google.protobuf.Timestamp ends_at = 7;
+  // Set when the subscription is cancelled. Once set, the recurrence
+  // worker emits no further grants for this subscription.
+  google.protobuf.Timestamp canceled_at = 8;
+}
+
+service SubscriptionService {
+  // Subscribe a customer to a plan. Materialises plan entries into
+  // entitlements + grants atomically. `starts_at` defaults to now.
+  rpc CreateSubscription(CreateSubscriptionRequest) returns (CreateSubscriptionResponse) {
+    option (google.api.http) = {
+      post: "/v1/subscriptions"
+      body: "*"
+      response_body: "subscription"
+    };
+  }
+  rpc GetSubscription(GetSubscriptionRequest) returns (GetSubscriptionResponse) {
+    option (google.api.http) = {
+      get: "/v1/subscriptions/{id}"
+      response_body: "subscription"
+    };
+  }
+  // List subscriptions. Top-level for admin / reconcile sweeps;
+  // the customer-scoped binding is a convenience for app code that
+  // already has a customer key in the URL.
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse) {
+    option (google.api.http) = {
+      get: "/v1/subscriptions"
+      response_body: "subscriptions"
+      additional_bindings: {
+        get: "/v1/customers/{customer_id_or_key}/subscriptions"
+        response_body: "subscriptions"
+      }
+    };
+  }
+  // Cancel a subscription. Sets `canceled_at`, voids the subscription's
+  // recurring grants, and sets `ends_at` to the effective cancellation
+  // time. Pass `at` to schedule "cancel at period end" semantics.
+  rpc CancelSubscription(CancelSubscriptionRequest) returns (CancelSubscriptionResponse) {
+    option (google.api.http) = {
+      post: "/v1/subscriptions/{id}/cancel"
+      body: "*"
+    };
+  }
+  // Change plan on an existing subscription. Voids the current
+  // subscription's recurring grants and materialises the new plan's
+  // entries from `effective_at` (default now). Existing usage on
+  // shared entitlements is preserved; proration is caller-driven
+  // (manual grant on the side if needed).
+  rpc ChangeSubscription(ChangeSubscriptionRequest) returns (ChangeSubscriptionResponse) {
+    option (google.api.http) = {
+      post: "/v1/subscriptions/{id}/change"
+      body: "*"
+      response_body: "subscription"
+    };
+  }
+}
+
+message CreateSubscriptionRequest {
+  // Customer.id (ULID) or Customer.key. Server resolves.
+  string customer_id_or_key = 1 [(buf.validate.field).required = true];
+  // Plan.id (ULID) or Plan.slug. Server resolves.
+  string plan_id_or_slug = 2 [(buf.validate.field).required = true];
+  google.protobuf.Struct metadata = 3;
+  // Default now if absent.
+  google.protobuf.Timestamp starts_at = 4;
+  // Optional fixed end. Open-ended if absent.
+  google.protobuf.Timestamp ends_at = 5;
+}
+message CreateSubscriptionResponse {
+  Subscription subscription = 1 [(buf.validate.field).required = true];
+}
+
+message GetSubscriptionRequest {
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"
+  ];
+}
+message GetSubscriptionResponse {
+  Subscription subscription = 1 [(buf.validate.field).required = true];
+}
+
+message ListSubscriptionsRequest {
+  // Optional filter — Customer.id (ULID) or Customer.key. Populated
+  // from the URL on the customer-scoped binding; provide as a query
+  // param on the top-level binding. Absent ⇒ list across all customers.
+  optional string customer_id_or_key = 1;
+  bool include_canceled = 2;
+  optional int32 limit = 3 [(buf.validate.field).int32 = {
+    gt: 0
+    lte: 1000
+  }];
+  optional string after = 4 [(buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"];
+}
+message ListSubscriptionsResponse {
+  repeated Subscription subscriptions = 1;
+}
+
+message CancelSubscriptionRequest {
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"
+  ];
+  // Effective cancellation time. Default now.
+  google.protobuf.Timestamp at = 2;
+}
+message CancelSubscriptionResponse {}
+
+message ChangeSubscriptionRequest {
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[0-7][0-9a-hjkmnp-tv-z]{25}$"
+  ];
+  string plan_id_or_slug = 2 [(buf.validate.field).required = true];
+  // When the new plan takes effect. Default now.
+  google.protobuf.Timestamp effective_at = 3;
+}
+message ChangeSubscriptionResponse {
+  Subscription subscription = 1 [(buf.validate.field).required = true];
+}

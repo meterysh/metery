@@ -1,6 +1,6 @@
 # Metery
 
-Self-hosted usage-billing and entitlements backend.
+Self-hosted metering and entitlements backend.
 
 ## Services
 
@@ -50,6 +50,26 @@ Self-hosted usage-billing and entitlements backend.
 | `CreateGrant` | `POST` | `/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}/grants` |
 | `ListGrants` | `GET` | `/v1/customers/{customer_id_or_key}/entitlements/{feature_id_or_slug}/grants` |
 | `VoidGrant` | `DELETE` | `/v1/grants/{id}` |
+
+### `metery.v1.PlanService`
+
+| RPC | Method | Path |
+|---|---|---|
+| `CreatePlan` | `POST` | `/v1/plans` |
+| `ListPlans` | `GET` | `/v1/plans` |
+| `GetPlan` | `GET` | `/v1/plans/{id_or_slug}` |
+| `ArchivePlan` | `DELETE` | `/v1/plans/{id_or_slug}` |
+
+### `metery.v1.SubscriptionService`
+
+| RPC | Method | Path |
+|---|---|---|
+| `CreateSubscription` | `POST` | `/v1/subscriptions` |
+| `ListSubscriptions` | `GET` | `/v1/subscriptions` |
+| `ListSubscriptions` | `GET` | `/v1/customers/{customer_id_or_key}/subscriptions` |
+| `GetSubscription` | `GET` | `/v1/subscriptions/{id}` |
+| `CancelSubscription` | `POST` | `/v1/subscriptions/{id}/cancel` |
+| `ChangeSubscription` | `POST` | `/v1/subscriptions/{id}/change` |
 
 ### `metery.v1.EventService`
 
