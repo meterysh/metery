@@ -432,3 +432,49 @@ func TestManualGrantStillWorks_AfterSchemaChange(t *testing.T) {
 		t.Errorf("manual grant.subscription_id should be nil, got %v", *grants[0].SubscriptionID)
 	}
 }
+
+// A customer may hold at most one active subscription per plan; a second
+// subscribe to the same plan is rejected. Re-subscribing after cancel is OK.
+func TestSubscribe_DuplicateActivePlanRejected(t *testing.T) {
+	_, ts := setupTestServer(t)
+	defer ts.Close()
+	c := newTestClients(ts)
+	ctx := context.Background()
+	custKey, featSlug := seedDeps(t, ctx, c)
+
+	if _, err := c.plan.CreatePlan(ctx, connect.NewRequest(&meteryv1.CreatePlanRequest{
+		Slug: "pro", Name: "Pro",
+		Entries: []*meteryv1.PlanEntry{{FeatureSlug: featSlug, Grant: &meteryv1.GrantTemplate{Amount: 500}}},
+	})); err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+
+	sub, err := c.subscription.CreateSubscription(ctx, connect.NewRequest(&meteryv1.CreateSubscriptionRequest{
+		CustomerIdOrKey: custKey, PlanIdOrSlug: "pro",
+	}))
+	if err != nil {
+		t.Fatalf("first subscribe: %v", err)
+	}
+
+	_, err = c.subscription.CreateSubscription(ctx, connect.NewRequest(&meteryv1.CreateSubscriptionRequest{
+		CustomerIdOrKey: custKey, PlanIdOrSlug: "pro",
+	}))
+	if err == nil {
+		t.Fatal("expected duplicate active subscription to be rejected")
+	}
+	if got := connect.CodeOf(err); got != connect.CodeAlreadyExists {
+		t.Errorf("err code = %v, want AlreadyExists", got)
+	}
+
+	// After cancel, re-subscribing is allowed.
+	if _, err := c.subscription.CancelSubscription(ctx, connect.NewRequest(&meteryv1.CancelSubscriptionRequest{
+		Id: sub.Msg.Subscription.Id,
+	})); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	if _, err := c.subscription.CreateSubscription(ctx, connect.NewRequest(&meteryv1.CreateSubscriptionRequest{
+		CustomerIdOrKey: custKey, PlanIdOrSlug: "pro",
+	})); err != nil {
+		t.Fatalf("re-subscribe after cancel: %v", err)
+	}
+}

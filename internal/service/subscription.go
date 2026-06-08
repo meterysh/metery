@@ -27,6 +27,16 @@ func (s *Service) CreateSubscription(ctx context.Context, req *connect.Request[m
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("plan is archived"))
 	}
 
+	// One active subscription per (customer, plan). A duplicate would stack
+	// grants on the shared entitlement and double credits every cycle.
+	dup, err := s.store.HasActiveSubscriptionForPlan(ctx, c.ID, p.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	if dup {
+		return nil, connect.NewError(connect.CodeAlreadyExists, errors.New("customer already has an active subscription to this plan"))
+	}
+
 	startsAt := time.Now().UTC().Truncate(time.Second)
 	if req.Msg.StartsAt != nil {
 		startsAt = req.Msg.StartsAt.AsTime()
