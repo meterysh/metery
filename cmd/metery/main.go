@@ -196,6 +196,7 @@ func main() {
 			mux.HandleFunc("GET /customers", webHandler.CustomersPage)
 			mux.HandleFunc("GET /customers/{id_or_key}", webHandler.CustomerDetail)
 			mux.HandleFunc("GET /plans", webHandler.PlansPage)
+			mux.HandleFunc("GET /plans/{id_or_slug}", webHandler.PlanDetail)
 			mux.HandleFunc("GET /subscriptions", webHandler.SubscriptionsPage)
 			mux.Handle("/", transcoder)
 			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
