@@ -592,6 +592,17 @@ func (s *Store) GetSubscription(ctx context.Context, id string) (*SubscriptionRo
 	return &sub, err
 }
 
+// HasActiveSubscriptionForPlan reports whether the customer already holds a
+// non-cancelled subscription to the given plan. The DB enforces this too via
+// subscriptions_active_plan_uniq; this is the friendly pre-insert check.
+func (s *Store) HasActiveSubscriptionForPlan(ctx context.Context, customerID, planID string) (bool, error) {
+	var n int
+	err := s.db.GetContext(ctx, &n, s.db.Rebind(
+		`SELECT COUNT(1) FROM subscriptions WHERE customer_id = ? AND plan_id = ? AND canceled_at IS NULL`),
+		customerID, planID)
+	return n > 0, err
+}
+
 // ListSubscriptions returns subscriptions, optionally scoped to one customer.
 // customerID == "" lists across all customers.
 func (s *Store) ListSubscriptions(ctx context.Context, customerID string, includeCanceled bool, limit int, after string) ([]SubscriptionRow, error) {
