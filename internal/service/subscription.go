@@ -120,7 +120,7 @@ func (s *Service) ListSubscriptions(ctx context.Context, req *connect.Request[me
 		after = *req.Msg.After
 	}
 
-	rows, err := s.store.ListSubscriptions(ctx, customerID, req.Msg.IncludeCanceled, limit, after)
+	rows, err := s.store.ListSubscriptions(ctx, customerID, "", req.Msg.IncludeCanceled, limit, after)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
