@@ -75,7 +75,7 @@ func (h *Handler) Overview(w http.ResponseWriter, r *http.Request) {
 	if ps, err := h.st.ListPlans(r.Context(), false, 1000, ""); err == nil {
 		data.PlanCount = len(ps)
 	}
-	if subs, err := h.st.ListSubscriptions(r.Context(), "", false, 1000, ""); err == nil {
+	if subs, err := h.st.ListSubscriptions(r.Context(), "", "", false, 1000, ""); err == nil {
 		data.SubscriptionCount = len(subs)
 	}
 	h.render(w, "index", data)
@@ -488,7 +488,8 @@ type planDetailData struct {
 	ArchivedAt    string
 	Archived      bool
 	Entries       []planEntryView
-	Subscriptions []subscriptionRow
+	SubCount      int
+	ActiveSubs    int
 }
 
 func (h *Handler) PlanDetail(w http.ResponseWriter, r *http.Request) {
@@ -520,33 +521,12 @@ func (h *Handler) PlanDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Entries = planEntryViews(p.Entries)
 
-	// Subscriptions on this plan. The store has no by-plan query, so we list
-	// and filter in Go — same approach MeterDetail takes for its features.
-	now := time.Now()
-	custKeyByID := map[string]string{}
-	if cs, err := h.st.ListCustomers(r.Context(), 1000, ""); err == nil {
-		for _, c := range cs {
-			custKeyByID[c.ID] = c.Key
-		}
-	}
-	if subs, err := h.st.ListSubscriptions(r.Context(), "", true, 1000, ""); err == nil {
-		for _, s := range subs {
-			if s.PlanID != p.ID {
-				continue
-			}
-			ckey := custKeyByID[s.CustomerID]
-			if ckey == "" {
-				ckey = s.CustomerID
-			}
-			data.Subscriptions = append(data.Subscriptions, subscriptionRow{
-				ID:          s.ID,
-				CustomerKey: ckey,
-				PlanSlug:    p.Slug,
-				Status:      subscriptionStatus(&s, now),
-				StartsAt:    s.StartsAt.Local().Format(time.DateTime),
-				CreatedAt:   s.CreatedAt.Local().Format(time.DateTime),
-			})
-		}
+	// Subscription counts for this plan — a count, not a list: the
+	// subscriptions table is unbounded, and the /subscriptions page (which
+	// carries the plan column) is where you actually browse them.
+	if total, active, err := h.st.CountSubscriptionsForPlan(r.Context(), p.ID); err == nil {
+		data.SubCount = total
+		data.ActiveSubs = active
 	}
 	h.render(w, "plan_detail", data)
 }
@@ -614,6 +594,7 @@ type subscriptionRow struct {
 type subscriptionsData struct {
 	layoutData
 	Subscriptions []subscriptionRow
+	FilterPlan    string // slug of the plan filter in effect; empty ⇒ unfiltered
 }
 
 func (h *Handler) SubscriptionsPage(w http.ResponseWriter, r *http.Request) {
@@ -622,6 +603,19 @@ func (h *Handler) SubscriptionsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := subscriptionsData{layoutData: layoutData{ActiveTab: "subscriptions", Title: "Subscriptions", User: user}}
+
+	// Optional ?plan=<id_or_slug> filter. Resolve to the plan's ULID for the
+	// query; an unrecognised value filters to a non-existent id ⇒ empty list.
+	planID := ""
+	if q := r.URL.Query().Get("plan"); q != "" {
+		if p, err := h.st.GetPlan(r.Context(), q); err == nil {
+			planID = p.ID
+			data.FilterPlan = p.Slug
+		} else {
+			planID = q
+			data.FilterPlan = q
+		}
+	}
 
 	custKeyByID := map[string]string{}
 	if cs, err := h.st.ListCustomers(r.Context(), 1000, ""); err == nil {
@@ -637,7 +631,7 @@ func (h *Handler) SubscriptionsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	if subs, err := h.st.ListSubscriptions(r.Context(), "", true, 50, ""); err == nil {
+	if subs, err := h.st.ListSubscriptions(r.Context(), "", planID, true, 50, ""); err == nil {
 		for _, s := range subs {
 			ckey := custKeyByID[s.CustomerID]
 			if ckey == "" {

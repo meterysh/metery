@@ -603,14 +603,33 @@ func (s *Store) HasActiveSubscriptionForPlan(ctx context.Context, customerID, pl
 	return n > 0, err
 }
 
-// ListSubscriptions returns subscriptions, optionally scoped to one customer.
-// customerID == "" lists across all customers.
-func (s *Store) ListSubscriptions(ctx context.Context, customerID string, includeCanceled bool, limit int, after string) ([]SubscriptionRow, error) {
+// CountSubscriptionsForPlan returns the total and active subscription counts
+// for a plan. "Active" uses the same canceled_at IS NULL definition as
+// subscriptions_active_plan_uniq and ListSubscriptions(includeCanceled=false).
+func (s *Store) CountSubscriptionsForPlan(ctx context.Context, planID string) (total, active int, err error) {
+	var c struct {
+		Total  int `db:"total"`
+		Active int `db:"active"`
+	}
+	err = s.db.GetContext(ctx, &c, s.db.Rebind(
+		`SELECT COUNT(1) AS total,
+		        COUNT(CASE WHEN canceled_at IS NULL THEN 1 END) AS active
+		   FROM subscriptions WHERE plan_id = ?`), planID)
+	return c.Total, c.Active, err
+}
+
+// ListSubscriptions returns subscriptions, optionally scoped to one customer
+// and/or one plan. An empty customerID / planID lifts that filter.
+func (s *Store) ListSubscriptions(ctx context.Context, customerID, planID string, includeCanceled bool, limit int, after string) ([]SubscriptionRow, error) {
 	conds := []string{"id > ?"}
 	args := []any{after}
 	if customerID != "" {
 		conds = append(conds, "customer_id = ?")
 		args = append(args, customerID)
+	}
+	if planID != "" {
+		conds = append(conds, "plan_id = ?")
+		args = append(args, planID)
 	}
 	if !includeCanceled {
 		conds = append(conds, "canceled_at IS NULL")

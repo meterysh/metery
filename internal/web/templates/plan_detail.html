@@ -35,6 +35,16 @@
       <dt class="text-gray-500 font-medium">Created</dt>
       <dd class="col-span-2 text-gray-900 tabular-nums">{{.CreatedAt}}</dd>
     </div>
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Subscriptions</dt>
+      <dd class="col-span-2">
+        {{if .SubCount}}
+        <a href="/subscriptions?plan={{.Slug}}" class="text-brand-600 hover:text-brand-800 hover:underline tabular-nums">{{.ActiveSubs}} active{{if ne .SubCount .ActiveSubs}} <span class="text-gray-400">/ {{.SubCount}} total</span>{{end}}</a>
+        {{else}}
+        <span class="text-gray-400">None</span>
+        {{end}}
+      </dd>
+    </div>
     {{if .Archived}}
     <div class="grid grid-cols-3 gap-4 px-6 py-4">
       <dt class="text-gray-500 font-medium">Status</dt>
@@ -82,48 +92,6 @@
   {{else}}
   <div class="px-6 py-8 text-center text-sm text-gray-500">
     <p>This plan has no entries.</p>
-  </div>
-  {{end}}
-</div>
-
-<h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Subscriptions on this plan</h3>
-<div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-  {{if .Subscriptions}}
-  <div class="overflow-x-auto">
-    <table class="w-full text-left text-sm whitespace-nowrap">
-      <thead class="bg-gray-50 text-gray-500 uppercase tracking-wider text-xs font-medium border-b border-gray-200">
-        <tr>
-          <th class="px-6 py-4">Customer</th>
-          <th class="px-6 py-4">Status</th>
-          <th class="px-6 py-4">Starts</th>
-          <th class="px-6 py-4">Created</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-gray-200">
-        {{range .Subscriptions}}
-        <tr class="hover:bg-gray-50 transition-colors">
-          <td class="px-6 py-3"><a href="/customers/{{.CustomerKey}}" class="text-brand-600 hover:text-brand-800 hover:underline font-mono text-xs font-medium">{{.CustomerKey}}</a></td>
-          <td class="px-6 py-3">
-            {{if eq .Status "active"}}
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">active</span>
-            {{else if eq .Status "canceled"}}
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">canceled</span>
-            {{else if eq .Status "expired"}}
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">expired</span>
-            {{else}}
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">pending</span>
-            {{end}}
-          </td>
-          <td class="px-6 py-3 text-gray-500 tabular-nums">{{.StartsAt}}</td>
-          <td class="px-6 py-3 text-gray-500 tabular-nums">{{.CreatedAt}}</td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
-  </div>
-  {{else}}
-  <div class="px-6 py-8 text-center text-sm text-gray-500">
-    <p>No subscriptions on this plan.</p>
   </div>
   {{end}}
 </div>
