@@ -1,0 +1,130 @@
+{{define "content"}}
+<div class="mb-6">
+  <a href="/plans" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-brand-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-sm">
+    <svg aria-hidden="true" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+    </svg>
+    Plans
+  </a>
+</div>
+<div class="mb-8">
+  <h2 class="text-2xl font-bold text-gray-900 tracking-tight text-balance">{{.Name}}</h2>
+</div>
+
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-8">
+  <dl class="divide-y divide-gray-200 text-sm">
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Slug</dt>
+      <dd class="col-span-2 text-gray-900"><code class="bg-gray-100 text-gray-800 px-2 py-1 rounded border border-gray-200 tabular-nums">{{.Slug}}</code></dd>
+    </div>
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">ID</dt>
+      <dd class="col-span-2 text-gray-900"><code class="bg-gray-100 text-gray-800 px-2 py-1 rounded border border-gray-200 tabular-nums">{{.ID}}</code></dd>
+    </div>
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Recurrence</dt>
+      <dd class="col-span-2 text-gray-900">{{if .Recurrence}}<code class="bg-gray-100 text-gray-800 px-2 py-1 rounded border border-gray-200 tabular-nums">{{.Recurrence}}</code>{{else}}<span class="text-gray-400">&mdash; one-shot</span>{{end}}</dd>
+    </div>
+    {{if .RecurrenceAt}}
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Recurrence anchor</dt>
+      <dd class="col-span-2 text-gray-900 tabular-nums">{{.RecurrenceAt}}</dd>
+    </div>
+    {{end}}
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Created</dt>
+      <dd class="col-span-2 text-gray-900 tabular-nums">{{.CreatedAt}}</dd>
+    </div>
+    {{if .Archived}}
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Status</dt>
+      <dd class="col-span-2 text-gray-900"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">Archived</span></dd>
+    </div>
+    {{end}}
+    {{if .ArchivedAt}}
+    <div class="grid grid-cols-3 gap-4 px-6 py-4">
+      <dt class="text-gray-500 font-medium">Archived</dt>
+      <dd class="col-span-2 text-gray-900 tabular-nums">{{.ArchivedAt}}</dd>
+    </div>
+    {{end}}
+  </dl>
+</div>
+
+<h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Entries</h3>
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-8">
+  {{if .Entries}}
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-sm whitespace-nowrap">
+      <thead class="bg-gray-50 text-gray-500 uppercase tracking-wider text-xs font-medium border-b border-gray-200">
+        <tr>
+          <th class="px-6 py-4">Feature</th>
+          <th class="px-6 py-4">Usage period</th>
+          <th class="px-6 py-4">Grant</th>
+          <th class="px-6 py-4">Priority</th>
+          <th class="px-6 py-4">Expiration</th>
+          <th class="px-6 py-4">Rollover</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        {{range .Entries}}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-6 py-3"><a href="/features/{{.FeatureSlug}}" class="text-brand-600 hover:text-brand-800 hover:underline font-mono text-xs font-medium tabular-nums">{{.FeatureSlug}}</a></td>
+          <td class="px-6 py-3">{{if .UsagePeriod}}<code class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs border border-gray-200">{{.UsagePeriod}}</code>{{else}}<span class="text-gray-400">&mdash;</span>{{end}}</td>
+          <td class="px-6 py-3 text-gray-900 tabular-nums">{{if .GrantAmount}}{{.GrantAmount}}{{else}}<span class="text-gray-400">&mdash;</span>{{end}}</td>
+          <td class="px-6 py-3 text-gray-500 tabular-nums">{{if .Priority}}{{.Priority}}{{else}}<span class="text-gray-400">&mdash;</span>{{end}}</td>
+          <td class="px-6 py-3">{{if .Expiration}}<code class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs border border-gray-200">{{.Expiration}}</code>{{else}}<span class="text-gray-400">&mdash;</span>{{end}}</td>
+          <td class="px-6 py-3 text-gray-500 tabular-nums">{{if .Rollover}}{{.Rollover}}{{else}}<span class="text-gray-400">&mdash;</span>{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="px-6 py-8 text-center text-sm text-gray-500">
+    <p>This plan has no entries.</p>
+  </div>
+  {{end}}
+</div>
+
+<h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Subscriptions on this plan</h3>
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+  {{if .Subscriptions}}
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-sm whitespace-nowrap">
+      <thead class="bg-gray-50 text-gray-500 uppercase tracking-wider text-xs font-medium border-b border-gray-200">
+        <tr>
+          <th class="px-6 py-4">Customer</th>
+          <th class="px-6 py-4">Status</th>
+          <th class="px-6 py-4">Starts</th>
+          <th class="px-6 py-4">Created</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        {{range .Subscriptions}}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-6 py-3"><a href="/customers/{{.CustomerKey}}" class="text-brand-600 hover:text-brand-800 hover:underline font-mono text-xs font-medium">{{.CustomerKey}}</a></td>
+          <td class="px-6 py-3">
+            {{if eq .Status "active"}}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">active</span>
+            {{else if eq .Status "canceled"}}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">canceled</span>
+            {{else if eq .Status "expired"}}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">expired</span>
+            {{else}}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">pending</span>
+            {{end}}
+          </td>
+          <td class="px-6 py-3 text-gray-500 tabular-nums">{{.StartsAt}}</td>
+          <td class="px-6 py-3 text-gray-500 tabular-nums">{{.CreatedAt}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="px-6 py-8 text-center text-sm text-gray-500">
+    <p>No subscriptions on this plan.</p>
+  </div>
+  {{end}}
+</div>
+{{end}}

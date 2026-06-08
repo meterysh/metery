@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,7 +30,7 @@ func NewHandler(st *store.Store, sessions *auth.SessionManager) *Handler {
 		tmpl:     template.Must(template.ParseFS(templatesFS, "templates/login.html")),
 		pages:    map[string]*template.Template{},
 	}
-	for _, p := range []string{"index", "meters", "features", "customers", "customer_detail", "meter_detail", "feature_detail", "plans", "subscriptions"} {
+	for _, p := range []string{"index", "meters", "features", "customers", "customer_detail", "meter_detail", "feature_detail", "plans", "plan_detail", "subscriptions"} {
 		h.pages[p] = template.Must(template.ParseFS(
 			templatesFS,
 			"templates/layout.html",
@@ -463,6 +464,140 @@ func planFeatureSlugs(entriesJSON string) []string {
 		slugs = append(slugs, e.FeatureSlug)
 	}
 	return slugs
+}
+
+// Plan detail
+
+type planEntryView struct {
+	FeatureSlug string
+	UsagePeriod string // ISO-8601 duration; empty for boolean / no windowing
+	GrantAmount string // int64 as string (protojson encoding); empty for boolean
+	Priority    string // empty when grant absent or priority unset
+	Expiration  string // ISO-8601 duration; empty if none
+	Rollover    string // max_amount as string; empty ⇒ uncapped carryover
+}
+
+type planDetailData struct {
+	layoutData
+	ID            string
+	Slug          string
+	Name          string
+	Recurrence    string
+	RecurrenceAt  string
+	CreatedAt     string
+	ArchivedAt    string
+	Archived      bool
+	Entries       []planEntryView
+	Subscriptions []subscriptionRow
+}
+
+func (h *Handler) PlanDetail(w http.ResponseWriter, r *http.Request) {
+	user := h.requireUser(w, r)
+	if user == nil {
+		return
+	}
+	p, err := h.st.GetPlan(r.Context(), r.PathValue("id_or_slug"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	data := planDetailData{
+		layoutData: layoutData{ActiveTab: "plans", Title: p.Name, User: user},
+		ID:         p.ID,
+		Slug:       p.Slug,
+		Name:       p.Name,
+		CreatedAt:  p.CreatedAt.Local().Format(time.DateTime),
+		Archived:   p.ArchivedAt != nil,
+	}
+	if p.RecurrenceInterval != nil {
+		data.Recurrence = *p.RecurrenceInterval
+	}
+	if p.RecurrenceAnchor != nil {
+		data.RecurrenceAt = p.RecurrenceAnchor.Local().Format(time.DateTime)
+	}
+	if p.ArchivedAt != nil {
+		data.ArchivedAt = p.ArchivedAt.Local().Format(time.DateTime)
+	}
+	data.Entries = planEntryViews(p.Entries)
+
+	// Subscriptions on this plan. The store has no by-plan query, so we list
+	// and filter in Go — same approach MeterDetail takes for its features.
+	now := time.Now()
+	custKeyByID := map[string]string{}
+	if cs, err := h.st.ListCustomers(r.Context(), 1000, ""); err == nil {
+		for _, c := range cs {
+			custKeyByID[c.ID] = c.Key
+		}
+	}
+	if subs, err := h.st.ListSubscriptions(r.Context(), "", true, 1000, ""); err == nil {
+		for _, s := range subs {
+			if s.PlanID != p.ID {
+				continue
+			}
+			ckey := custKeyByID[s.CustomerID]
+			if ckey == "" {
+				ckey = s.CustomerID
+			}
+			data.Subscriptions = append(data.Subscriptions, subscriptionRow{
+				ID:          s.ID,
+				CustomerKey: ckey,
+				PlanSlug:    p.Slug,
+				Status:      subscriptionStatus(&s, now),
+				StartsAt:    s.StartsAt.Local().Format(time.DateTime),
+				CreatedAt:   s.CreatedAt.Local().Format(time.DateTime),
+			})
+		}
+	}
+	h.render(w, "plan_detail", data)
+}
+
+// planEntryViews decodes a plan's stored entries JSON into display rows.
+// Entries are protojson-encoded (snake_case names, int64 as string), so the
+// shape mirrors meterv1.PlanEntry without depending on the proto types.
+func planEntryViews(entriesJSON string) []planEntryView {
+	if entriesJSON == "" {
+		return nil
+	}
+	var entries []struct {
+		FeatureSlug string `json:"feature_slug"`
+		UsagePeriod *struct {
+			Duration string `json:"duration"`
+		} `json:"usage_period"`
+		Grant *struct {
+			Amount     string `json:"amount"`
+			Priority   *int   `json:"priority"`
+			Expiration *struct {
+				Duration string `json:"duration"`
+			} `json:"expiration"`
+		} `json:"grant"`
+		Rollover *struct {
+			MaxAmount string `json:"max_amount"`
+		} `json:"rollover"`
+	}
+	if err := json.Unmarshal([]byte(entriesJSON), &entries); err != nil {
+		return nil
+	}
+	views := make([]planEntryView, 0, len(entries))
+	for _, e := range entries {
+		v := planEntryView{FeatureSlug: e.FeatureSlug}
+		if e.UsagePeriod != nil {
+			v.UsagePeriod = e.UsagePeriod.Duration
+		}
+		if e.Grant != nil {
+			v.GrantAmount = e.Grant.Amount
+			if e.Grant.Priority != nil {
+				v.Priority = strconv.Itoa(*e.Grant.Priority)
+			}
+			if e.Grant.Expiration != nil {
+				v.Expiration = e.Grant.Expiration.Duration
+			}
+		}
+		if e.Rollover != nil {
+			v.Rollover = e.Rollover.MaxAmount
+		}
+		views = append(views, v)
+	}
+	return views
 }
 
 // Subscriptions
